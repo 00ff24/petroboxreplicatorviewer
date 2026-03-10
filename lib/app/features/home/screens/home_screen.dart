@@ -200,7 +200,7 @@ class ServerManager {
 
     'http://frodo.petroboxinc.com:5001/usuarios',
 
-    'http://gandalf.petroboxinc.com:5001/usuarios',
+    'http://192.168.125.204:5001/usuarios',
   ];
 
   static Future<bool> hasCache() async {
@@ -294,14 +294,18 @@ class ServerManager {
 
     // Intentamos deducir un nombre amigable del subdominio (ej: bilbo)
 
-    String name = uri.host.split('.').first.toUpperCase();
+    // Si parece una IP (empieza con número), la dejamos completa. Si es dominio, cortamos.
+    String host = uri.host;
+    String name = host;
 
-    if (name.isEmpty) name = 'UNKNOWN';
+    if (!RegExp(r'^\d').hasMatch(host)) {
+      name = host.split('.').first;
+    }
 
     return ServerData(
       id: name.toLowerCase(),
 
-      name: name,
+      name: name.toUpperCase().isEmpty ? 'UNKNOWN' : name.toUpperCase(),
 
       apiUrl: endpoint,
 
@@ -493,6 +497,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<ServerData> servers = [];
+
+  Set<String> _expandedCardIds = {};
 
   Timer? _timer;
 
@@ -695,6 +701,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  void _toggleGlobalExpansion() {
+    setState(() {
+      // Si todas están expandidas, las colapsamos todas.
+      // Si no (hay alguna cerrada o todas cerradas), las expandimos todas.
+      if (_expandedCardIds.length == servers.length) {
+        _expandedCardIds.clear();
+      } else {
+        _expandedCardIds = servers.map((s) => s.id).toSet();
+      }
+    });
+  }
+
   double _estimateCardHeight(ServerData server) {
     // Altura base estimada (Header + Resources + Footer + Paddings)
     // Ajustado para cubrir el contenido estático de la tarjeta
@@ -768,7 +786,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                 children: [
                   // HEADER
-                  buildHeader(context),
+                  buildHeader(context, isMobile),
 
                   const SizedBox(height: 32),
 
@@ -789,14 +807,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                           children:
                               servers.map((server) {
+                                final bool isExpanded =
+                                    isMobile &&
+                                    _expandedCardIds.contains(server.id);
                                 return SizedBox(
                                   width: cardWidth,
-                                  height:
-                                      maxCardHeight, // Aplicamos la altura máxima a todas
+                                  height: isMobile ? null : maxCardHeight,
                                   child: buildServerCard(
                                     context,
                                     server,
                                     maxIpLines,
+                                    isMobile,
+                                    isExpanded,
                                   ),
                                 );
                               }).toList(),
@@ -819,7 +841,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // ==========================================
 
-  Widget buildHeader(BuildContext context) {
+  Widget buildHeader(BuildContext context, bool isMobile) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
 
@@ -827,44 +849,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // Logo y Título
         Row(
           children: [
-            // Logo estilo React (Activity icon con gradiente)
+            // Avatar del Perfil (Movido al principio)
             Container(
-              width: 36,
+              width: 32,
 
-              height: 36,
+              height: 32,
 
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    AppTheme.primaryBlue,
+                color: Theme.of(context).dividerColor.withOpacity(0.1),
 
-                    Color(0xFF4F46E5),
-                  ], // Blue to Indigo
+                borderRadius: BorderRadius.circular(16),
 
-                  begin: Alignment.topLeft,
-
-                  end: Alignment.bottomRight,
-                ),
-
-                borderRadius: BorderRadius.circular(8),
-
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryBlue.withOpacity(0.3),
-
-                    blurRadius: 8,
-
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                border: Border.all(color: Theme.of(context).dividerColor),
               ),
 
-              child: const Icon(
-                Icons.show_chart_rounded,
+              child: const Center(
+                child: Text(
+                  'P',
 
-                color: Colors.white,
+                  style: TextStyle(
+                    color: AppTheme.primaryBlue,
 
-                size: 20,
+                    fontWeight: FontWeight.bold,
+
+                    fontSize: 14,
+                  ),
+                ),
               ),
             ),
 
@@ -946,19 +956,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // Controles derechos
         Row(
           children: [
+            // Botón Global Expandir/Colapsar (Solo visible en móvil)
+            if (isMobile)
+              IconButton(
+                padding: const EdgeInsets.all(6),
+                constraints: const BoxConstraints(),
+                onPressed: _toggleGlobalExpansion,
+                icon: Icon(
+                  _expandedCardIds.length == servers.length
+                      ? Icons.unfold_less_rounded
+                      : Icons.unfold_more_rounded,
+                ),
+                iconSize: 22,
+                tooltip:
+                    _expandedCardIds.length == servers.length
+                        ? 'Colapsar todo'
+                        : 'Expandir todo',
+                color: Theme.of(context).textTheme.bodyMedium?.color,
+              ),
+
             IconButton(
+              padding: const EdgeInsets.all(6),
+              constraints: const BoxConstraints(),
               onPressed: widget.onThemeToggle,
 
               icon: const Icon(Icons.light_mode_rounded),
-
+              iconSize: 22,
               tooltip: 'Cambiar tema',
 
               color: Theme.of(context).textTheme.bodyMedium?.color,
             ),
 
             IconButton(
+              padding: const EdgeInsets.all(6),
+              constraints: const BoxConstraints(),
               icon: const Icon(Icons.logout_rounded),
-
+              iconSize: 22,
               color: AppTheme.errorRed,
 
               tooltip: 'Cerrar Sesión',
@@ -975,37 +1008,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 );
               },
             ),
-
-            const SizedBox(width: 8),
-
-            // Avatar del Perfil
-            Container(
-              width: 32,
-
-              height: 32,
-
-              decoration: BoxDecoration(
-                color: Theme.of(context).dividerColor.withOpacity(0.1),
-
-                borderRadius: BorderRadius.circular(16),
-
-                border: Border.all(color: Theme.of(context).dividerColor),
-              ),
-
-              child: const Center(
-                child: Text(
-                  'P',
-
-                  style: TextStyle(
-                    color: AppTheme.primaryBlue,
-
-                    fontWeight: FontWeight.bold,
-
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
       ],
@@ -1016,9 +1018,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     BuildContext context,
     ServerData server,
     int maxIpLines,
+    bool isMobile,
+    bool isExpanded,
   ) {
     final String osName = server.os.split(' ').first;
-    final String osVersion = server.os.replaceFirst(osName, '').trim();
+    server.os.replaceFirst(osName, '').trim();
 
     Color statusColor;
 
@@ -1075,27 +1079,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             .withOpacity(0.1);
     }
 
-    return GestureDetector(
-      onTap: () {
-        // NAVEGACIÓN A DETALLES DEL SERVIDOR
+    return Container(
+      padding: const EdgeInsets.all(20),
 
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => ServerDetailScreen(server: server)),
-        );
-      },
+      decoration: AppTheme.cardDecoration(context),
 
-      child: Container(
-        padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min, // Para que AnimatedSize funcione bien
 
-        decoration: AppTheme.cardDecoration(context),
-
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-
-          children: [
-            // Cabecera del Servidor
-            Row(
+        children: [
+          // Cabecera del Servidor (Tap -> Toggle en móvil / Navigate en Desktop)
+          GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () {
+              if (isMobile) {
+                setState(() {
+                  if (isExpanded) {
+                    _expandedCardIds.remove(server.id);
+                  } else {
+                    _expandedCardIds.add(server.id);
+                  }
+                });
+              } else {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ServerDetailScreen(server: server),
+                  ),
+                );
+              }
+            },
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
 
               children: [
@@ -1225,424 +1240,408 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 Icon(statusIcon, color: statusColor, size: 24),
               ],
             ),
+          ),
 
-            const SizedBox(height: 20),
+          // Contenido expandible (Tap -> Navegar a detalle)
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.fastOutSlowIn,
+            child: Visibility(
+              visible: !isMobile || isExpanded,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ServerDetailScreen(server: server),
+                    ),
+                  );
+                },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 20),
 
-            // IPs
-            SizedBox(
-              height: maxIpLines * 28.0,
-              child: Column(
-                children:
-                    server.ip.split('\n').map((line) {
-                      if (line.trim().isEmpty) return const SizedBox.shrink();
+                    // IPs
+                    SizedBox(
+                      height: isMobile ? null : maxIpLines * 28.0,
+                      child: Column(
+                        children:
+                            server.ip.split('\n').map((line) {
+                              if (line.trim().isEmpty) {
+                                return const SizedBox.shrink();
+                              }
 
-                      IconData icon = Icons.wifi;
+                              IconData icon = Icons.wifi;
 
-                      String label = "ip";
+                              String label = "ip";
 
-                      if (line.toLowerCase().contains('eth0')) {
-                        icon = Icons.public;
+                              if (line.toLowerCase().contains('eth0')) {
+                                icon = Icons.public;
 
-                        label = "eth0";
-                      } else if (line.toLowerCase().contains('ham')) {
-                        icon = Icons.security;
+                                label = "eth0";
+                              } else if (line.toLowerCase().contains('ham')) {
+                                icon = Icons.security;
 
-                        label = "ham0";
-                      }
+                                label = "ham0";
+                              }
 
-                      // Limpiar la cadena para mostrar solo la IP si es posible
+                              // Limpiar la cadena para mostrar solo la IP si es posible
 
-                      String ipValue = line.replaceAll(RegExp(r'.*:\s*'), '');
+                              String ipValue = line.replaceAll(
+                                RegExp(r'.*:\s*'),
+                                '',
+                              );
 
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 6.0),
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 6.0),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      icon,
+                                      size: 14,
+                                      color: AppTheme.textMuted,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    SizedBox(
+                                      width: 40,
+                                      child: Text(
+                                        '$label:',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        ipValue,
+                                        style: AppTheme.monoStyle.copyWith(
+                                          fontSize: 13,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                      ),
+                    ),
 
-                        child: Row(
+                    // Recursos (CPU / RAM) con Barras
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).scaffoldBackgroundColor.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Theme.of(
+                            context,
+                          ).dividerColor.withOpacity(0.05),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          // CPU
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.memory_rounded,
+                                          size: 12,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'CPU',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color:
+                                                Theme.of(
+                                                  context,
+                                                ).textTheme.bodyMedium?.color,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    Text(
+                                      server.rawCpu.toStringAsFixed(1),
+                                      style: AppTheme.monoStyle.copyWith(
+                                        fontSize: 11,
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).textTheme.bodyMedium?.color,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+
+                                // Barra de Progreso CPU
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Stack(
+                                        children: [
+                                          Container(
+                                            height: 6,
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(
+                                                context,
+                                              ).dividerColor.withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(3),
+                                            ),
+                                          ),
+                                          FractionallySizedBox(
+                                            widthFactor: (server.rawCpu / 100)
+                                                .clamp(0.0, 1.0),
+                                            child: Container(
+                                              height: 6,
+                                              decoration: BoxDecoration(
+                                                color:
+                                                    server.rawCpu > 80
+                                                        ? AppTheme.errorRed
+                                                        : server.rawCpu > 50
+                                                        ? AppTheme.warningAmber
+                                                        : AppTheme.successGreen,
+                                                borderRadius:
+                                                    BorderRadius.circular(3),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '${server.rawCpu.toStringAsFixed(0)}%',
+                                      style: AppTheme.monoStyle.copyWith(
+                                        fontSize: 10,
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).textTheme.bodyMedium?.color,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(width: 16),
+
+                          // RAM
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.sd_storage_rounded,
+                                          size: 12,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'RAM',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color:
+                                                Theme.of(
+                                                  context,
+                                                ).textTheme.bodyMedium?.color,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    Text(
+                                      server.ramUsage,
+                                      style: AppTheme.monoStyle.copyWith(
+                                        fontSize: 11,
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).textTheme.bodyMedium?.color,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+
+                                // Barra de Progreso RAM
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Stack(
+                                        children: [
+                                          Container(
+                                            height: 6,
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(
+                                                context,
+                                              ).dividerColor.withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(3),
+                                            ),
+                                          ),
+                                          FractionallySizedBox(
+                                            widthFactor: (server.rawRamPercent /
+                                                    100)
+                                                .clamp(0.0, 1.0),
+                                            child: Container(
+                                              height: 6,
+                                              decoration: BoxDecoration(
+                                                color: AppTheme.primaryBlue,
+                                                borderRadius:
+                                                    BorderRadius.circular(3),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '${server.rawRamPercent.toStringAsFixed(0)}%',
+                                      style: AppTheme.monoStyle.copyWith(
+                                        fontSize: 10,
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).textTheme.bodyMedium?.color,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    //const Spacer(),
+                    const SizedBox(height: 20),
+
+                    // Resumen de Nodos
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
                           children: [
-                            Icon(icon, size: 14, color: AppTheme.textMuted),
-
-                            const SizedBox(width: 8),
-
-                            SizedBox(
-                              width: 40,
-
-                              child: Text(
-                                '$label:',
-
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: AppTheme.successGreen,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            RichText(
+                              text: TextSpan(
                                 style: TextStyle(
                                   fontSize: 13,
-
                                   color:
                                       Theme.of(
                                         context,
                                       ).textTheme.bodyMedium?.color,
                                 ),
+                                children: [
+                                  TextSpan(text: 'Activos: '),
+                                  TextSpan(
+                                    text: '${server.activeNodes}',
+                                    style: TextStyle(
+                                      color:
+                                          Theme.of(
+                                            context,
+                                          ).textTheme.bodyMedium?.color,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-
-                            Expanded(
-                              child: Text(
-                                ipValue,
-
-                                style: AppTheme.monoStyle.copyWith(
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).dividerColor.withOpacity(0.1),
+                                shape: BoxShape.circle,
+                              ), // Gris para inactivos
+                            ),
+                            const SizedBox(width: 6),
+                            RichText(
+                              text: TextSpan(
+                                style: TextStyle(
                                   fontSize: 13,
-
                                   color:
                                       Theme.of(
                                         context,
                                       ).textTheme.bodyMedium?.color,
                                 ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-              ),
-            ),
-
-            // Recursos (CPU / RAM) con Barras
-            Container(
-              padding: const EdgeInsets.all(12),
-
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).scaffoldBackgroundColor.withOpacity(0.5),
-
-                borderRadius: BorderRadius.circular(12),
-
-                border: Border.all(
-                  color: Theme.of(context).dividerColor.withOpacity(0.05),
-                ),
-              ),
-
-              child: Row(
-                children: [
-                  // CPU
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.memory_rounded,
-
-                                  size: 12,
-
-                                  color:
-                                      Theme.of(
-                                        context,
-                                      ).textTheme.bodyMedium?.color,
-                                ),
-
-                                SizedBox(width: 4),
-
-                                Text(
-                                  'CPU',
-
-                                  style: TextStyle(
-                                    fontSize: 11,
-
-                                    color:
-                                        Theme.of(
-                                          context,
-                                        ).textTheme.bodyMedium?.color,
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            Text(
-                              server.rawCpu.toStringAsFixed(1),
-
-                              style: AppTheme.monoStyle.copyWith(
-                                fontSize: 11,
-
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).textTheme.bodyMedium?.color,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 6),
-
-                        // Barra de Progreso CPU
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Stack(
                                 children: [
-                                  Container(
-                                    height: 6,
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(
-                                        context,
-                                      ).dividerColor.withOpacity(0.1),
-
-                                      borderRadius: BorderRadius.circular(3),
-                                    ),
-                                  ),
-
-                                  FractionallySizedBox(
-                                    widthFactor: (server.rawCpu / 100).clamp(
-                                      0.0,
-
-                                      1.0,
-                                    ),
-
-                                    child: Container(
-                                      height: 6,
-
-                                      decoration: BoxDecoration(
-                                        color:
-                                            server.rawCpu > 80
-                                                ? AppTheme.errorRed
-                                                : server.rawCpu > 50
-                                                ? AppTheme.warningAmber
-                                                : AppTheme.successGreen,
-
-                                        borderRadius: BorderRadius.circular(3),
-                                      ),
+                                  TextSpan(text: 'Inactivos: '),
+                                  TextSpan(
+                                    text: '${server.inactiveNodes}',
+                                    style: TextStyle(
+                                      color:
+                                          Theme.of(
+                                            context,
+                                          ).textTheme.bodyMedium?.color,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                 ],
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '${server.rawCpu.toStringAsFixed(0)}%',
-                              style: AppTheme.monoStyle.copyWith(
-                                fontSize: 10,
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).textTheme.bodyMedium?.color,
                               ),
                             ),
                           ],
                         ),
                       ],
                     ),
-                  ),
-
-                  const SizedBox(width: 16),
-
-                  // RAM
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.sd_storage_rounded,
-
-                                  size: 12,
-
-                                  color:
-                                      Theme.of(
-                                        context,
-                                      ).textTheme.bodyMedium?.color,
-                                ),
-
-                                SizedBox(width: 4),
-
-                                Text(
-                                  'RAM',
-
-                                  style: TextStyle(
-                                    fontSize: 11,
-
-                                    color:
-                                        Theme.of(
-                                          context,
-                                        ).textTheme.bodyMedium?.color,
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            Text(
-                              server.ramUsage,
-                              style: AppTheme.monoStyle.copyWith(
-                                fontSize: 11,
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).textTheme.bodyMedium?.color,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 6),
-
-                        // Barra de Progreso RAM
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Stack(
-                                children: [
-                                  Container(
-                                    height: 6,
-
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(
-                                        context,
-                                      ).dividerColor.withOpacity(0.1),
-
-                                      borderRadius: BorderRadius.circular(3),
-                                    ),
-                                  ),
-
-                                  FractionallySizedBox(
-                                    widthFactor: (server.rawRamPercent / 100)
-                                        .clamp(0.0, 1.0),
-
-                                    child: Container(
-                                      height: 6,
-
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.primaryBlue,
-
-                                        borderRadius: BorderRadius.circular(3),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '${server.rawRamPercent.toStringAsFixed(0)}%',
-                              style: AppTheme.monoStyle.copyWith(
-                                fontSize: 10,
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).textTheme.bodyMedium?.color,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-
-            //const Spacer(),
-            const SizedBox(height: 20),
-
-            // Resumen de Nodos
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 8,
-
-                      height: 8,
-
-                      decoration: const BoxDecoration(
-                        color: AppTheme.successGreen,
-
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-
-                    const SizedBox(width: 6),
-                    RichText(
-                      text: TextSpan(
-                        style: TextStyle(
-                          fontSize: 13,
-
-                          color: Theme.of(context).textTheme.bodyMedium?.color,
-                        ),
-
-                        children: [
-                          TextSpan(text: 'Activos: '),
-
-                          TextSpan(
-                            text: '${server.activeNodes}',
-
-                            style: TextStyle(
-                              color:
-                                  Theme.of(context).textTheme.bodyMedium?.color,
-
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-
-                Row(
-                  children: [
-                    Container(
-                      width: 8,
-
-                      height: 8,
-
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).dividerColor.withOpacity(0.1),
-
-                        shape: BoxShape.circle,
-                      ), // Gris para inactivos
-                    ),
-
-                    const SizedBox(width: 6),
-
-                    RichText(
-                      text: TextSpan(
-                        style: TextStyle(
-                          fontSize: 13,
-
-                          color: Theme.of(context).textTheme.bodyMedium?.color,
-                        ),
-
-                        children: [
-                          TextSpan(text: 'Inactivos: '),
-
-                          TextSpan(
-                            text: '${server.inactiveNodes}',
-
-                            style: TextStyle(
-                              color:
-                                  Theme.of(context).textTheme.bodyMedium?.color,
-
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -2309,7 +2308,9 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                         Container(
                           padding: const EdgeInsets.all(16),
 
-                          color: AppTheme.bgCard.withOpacity(0.5),
+                          color: Theme.of(
+                            context,
+                          ).scaffoldBackgroundColor.withOpacity(0.5),
 
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2466,11 +2467,11 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                   padding: const EdgeInsets.all(16),
 
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0D1117), // Fondo terminal más oscuro
+                    color: Theme.of(context).cardColor,
 
                     borderRadius: BorderRadius.circular(16),
 
-                    border: Border.all(color: AppTheme.borderColor),
+                    border: Border.all(color: Theme.of(context).dividerColor),
                   ),
 
                   child: Column(
@@ -2505,7 +2506,10 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                                         style: AppTheme.monoStyle.copyWith(
                                           fontSize: 12,
 
-                                          color: AppTheme.textMain,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
                                         ),
                                       ),
                                     )
@@ -2552,7 +2556,10 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                                             text: log.msg,
 
                                             style: TextStyle(
-                                              color: AppTheme.textMain,
+                                              color:
+                                                  Theme.of(
+                                                    context,
+                                                  ).textTheme.bodyMedium?.color,
                                             ),
                                           ),
                                         ],
@@ -2880,8 +2887,11 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                   padding: const EdgeInsets.all(24),
 
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppTheme.bgCard, Color(0xFF1E293B)],
+                    gradient: LinearGradient(
+                      colors: [
+                        Theme.of(context).cardColor,
+                        Theme.of(context).scaffoldBackgroundColor,
+                      ],
 
                       begin: Alignment.topLeft,
 
@@ -2890,11 +2900,11 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
 
                     borderRadius: BorderRadius.circular(24),
 
-                    border: Border.all(color: AppTheme.borderColor),
+                    border: Border.all(color: Theme.of(context).dividerColor),
 
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
+                        color: Theme.of(context).shadowColor.withOpacity(0.1),
 
                         blurRadius: 10,
 
@@ -2951,8 +2961,9 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                                 fontWeight: FontWeight.bold,
 
                                 color:
-                                    Colors
-                                        .white, // Forzado a blanco por el fondo oscuro
+                                    Theme.of(
+                                      context,
+                                    ).textTheme.titleLarge?.color,
                               ),
                             ),
 
