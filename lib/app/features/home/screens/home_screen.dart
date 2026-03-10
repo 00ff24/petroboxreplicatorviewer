@@ -2861,7 +2861,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
         iconTheme: IconThemeData(color: Theme.of(context).iconTheme.color),
 
         title: Text(
-          'Perfil de Usuario',
+          'Detalles del usuario',
 
           style: TextStyle(
             color: Theme.of(context).textTheme.titleLarge?.color, // Dynamic
@@ -2915,36 +2915,6 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
 
                   child: Row(
                     children: [
-                      Container(
-                        width: 50,
-                        height: 50,
-
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryBlue,
-                          borderRadius: BorderRadius.circular(16),
-
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppTheme.primaryBlue.withOpacity(0.3),
-
-                              blurRadius: 10,
-
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-
-                        child: Center(
-                          child: Icon(
-                            Icons.person_rounded,
-                            color: Colors.white,
-                            size: 28,
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(width: 20),
-
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3016,7 +2986,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
 
                           color: AppTheme.errorRed,
 
-                          tooltip: 'Reiniciar Servicios Replicator',
+                          tooltip: 'Reiniciar Servicio Replicator',
 
                           onPressed: handleRestartService,
                         ),
@@ -3035,7 +3005,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
 
                   children: [
                     Text(
-                      'COLA DE ENTRADA (INPUT)',
+                      'Cola de entrada / input',
 
                       style: TextStyle(
                         fontSize: 14,
@@ -3064,24 +3034,51 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
 
                 const SizedBox(height: 12),
 
-                buildQueueCard(
-                  context,
-
-                  'Paquetes Recibidos',
-
-                  inQueue.toString(),
-
-                  AppTheme.successGreen,
-
-                  Icons.arrow_downward_rounded,
-
-                  isInput: true,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 16,
+                  ),
+                  decoration: AppTheme.cardDecoration(context),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.arrow_downward_rounded,
+                        size: 20,
+                        color: AppTheme.successGreen,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Paquetes Recibidos',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).textTheme.bodyLarge?.color,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '$inQueue paquetes',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color:
+                              inQueue > 0
+                                  ? AppTheme.successGreen
+                                  : Theme.of(
+                                    context,
+                                  ).textTheme.bodyMedium?.color,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
 
                 const SizedBox(height: 24),
 
                 Text(
-                  'Colas de Salida (${outputs.length})',
+                  'Colas de Salida / output (${outputs.length})',
 
                   style: TextStyle(
                     fontSize: 14,
@@ -3111,17 +3108,55 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
 
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12.0),
-
-                    child: buildQueueCard(
-                      context,
-
-                      displayName,
-
-                      value.toString(),
-
-                      AppTheme.primaryBlue,
-
-                      Icons.arrow_upward_rounded,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
+                      decoration: AppTheme.cardDecoration(context),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.folder_open_rounded,
+                            size: 20,
+                            color: AppTheme.primaryBlue,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              displayName,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color:
+                                    Theme.of(
+                                      context,
+                                    ).textTheme.bodyLarge?.color,
+                              ),
+                            ),
+                          ),
+                          if (value.toString() == '-1')
+                            const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else
+                            Text(
+                              '$value paquetes',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color:
+                                    (int.tryParse(value.toString()) ?? 0) > 0
+                                        ? AppTheme.primaryBlue
+                                        : Theme.of(
+                                          context,
+                                        ).textTheme.bodyMedium?.color,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   );
                 }),
@@ -3142,167 +3177,6 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget buildQueueCard(
-    BuildContext context,
-
-    String title,
-
-    String count,
-
-    Color color,
-
-    IconData icon, {
-
-    bool isInput = false,
-  }) {
-    final int countVal = int.tryParse(count) ?? 0;
-
-    final bool isLoading = countVal == -1; // -1 indica cargando
-
-    final bool hasTraffic = countVal > 0;
-
-    final Color activeColor =
-        hasTraffic
-            ? (isInput ? AppTheme.successGreen : AppTheme.errorRed)
-            : (Theme.of(context).textTheme.bodyMedium?.color ?? Colors.grey);
-
-    final Color bgIcon =
-        (hasTraffic || isLoading)
-            ? activeColor.withOpacity(0.1)
-            : Theme.of(context).scaffoldBackgroundColor;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-
-      decoration: AppTheme.cardDecoration(context),
-
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-
-            decoration: BoxDecoration(
-              color: bgIcon,
-
-              borderRadius: BorderRadius.circular(16),
-
-              border: Border.all(
-                color:
-                    (hasTraffic || isLoading)
-                        ? activeColor.withOpacity(0.2)
-                        : Colors.transparent,
-              ),
-            ),
-
-            child:
-                isLoading
-                    ? SizedBox(
-                      width: 20,
-                      height: 20,
-
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-
-                        color: AppTheme.primaryBlue,
-                      ),
-                    )
-                    : Icon(
-                      icon,
-
-                      color:
-                          hasTraffic
-                              ? activeColor
-                              : (Theme.of(
-                                    context,
-                                  ).textTheme.bodyMedium?.color ??
-                                  Colors.grey),
-
-                      size: 20,
-                    ),
-          ),
-
-          const SizedBox(width: 20),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-
-              children: [
-                Text(
-                  title,
-
-                  style: AppTheme.monoStyle.copyWith(
-                    fontSize: 11,
-
-                    fontWeight: FontWeight.bold,
-
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
-                  ),
-                ),
-
-                const SizedBox(height: 4),
-
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-
-                  textBaseline: TextBaseline.alphabetic,
-
-                  children: [
-                    isLoading
-                        ? Text(
-                          "Cargando...",
-
-                          style: TextStyle(
-                            fontSize: 18,
-
-                            color:
-                                Theme.of(context).textTheme.bodyMedium?.color,
-
-                            fontStyle: FontStyle.italic,
-                          ),
-                        )
-                        : Text(
-                          count,
-
-                          style: TextStyle(
-                            fontSize: 24,
-
-                            fontWeight: FontWeight.w300,
-
-                            color:
-                                Theme.of(context).textTheme.displaySmall?.color,
-                          ),
-                        ),
-
-                    const SizedBox(width: 6),
-
-                    const Text(
-                      'paquetes',
-                      style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          if (isInput && countVal == 0)
-            const Text(
-              "Todo al día",
-
-              style: TextStyle(
-                color: AppTheme.successGreen,
-
-                fontSize: 12,
-
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-        ],
       ),
     );
   }
