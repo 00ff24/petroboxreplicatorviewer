@@ -1,122 +1,162 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:replicatorviewer/app/common/widgets/app_logo.dart';
+import 'package:replicatorviewer/app/config/theme.dart';
+import 'package:replicatorviewer/app/features/auth/screens/login_screen.dart';
+import 'package:replicatorviewer/app/features/home/screens/home_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:window_manager/window_manager.dart';
 
-void main() {
-  runApp(const MyApp());
-}
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  // Configuración específica para escritorio
+  try {
+    if (!kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.linux ||
+            defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.macOS)) {
+      await windowManager.ensureInitialized();
 
-  // This widget is the root of your application.
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
+      WindowOptions windowOptions = const WindowOptions(
+        size: Size(
+          1300,
+          768,
+        ), // Tamaño inicial al abrir la ventana (4 tarjetas * 300 + espacios)
+        minimumSize: Size(1300, 768), // Tamaño mínimo (límite para achicar)
+        center: true,
+        title: 'Replicator Viewer',
+      );
+
+      windowManager.waitUntilReadyToShow(windowOptions, () async {
+        await windowManager.show();
+        await windowManager.focus();
+        await windowManager.setMinimumSize(const Size(1300, 768));
+      });
+    }
+  } catch (e) {
+    debugPrint('Error inicializando windowManager (ignorable en móvil): $e');
   }
+
+  runApp(const LoginApp());
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class LoginApp extends StatefulWidget {
+  const LoginApp({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<LoginApp> createState() => _LoginAppState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _LoginAppState extends State<LoginApp> {
+  ThemeMode _themeMode = ThemeMode.dark;
+  bool _isLoading = true;
+  bool _isLoggedIn = false;
 
-  void _incrementCounter() {
+  @override
+  void initState() {
+    super.initState();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    // 1. Precargar datos de servidores (Splash logic)
+    // Si hay caché, entramos directo. Si no, esperamos al primer servidor.
+    final bool hasCache = await ServerManager.hasCache();
+
+    if (!hasCache) {
+      final completer = Completer<void>();
+      final stream = ServerManager.streamServers();
+      StreamSubscription? subscription;
+
+      subscription = stream.listen(
+        (server) async {
+          if (!completer.isCompleted) {
+            // Guardamos el primero para que HomeScreen tenga algo que mostrar
+            await ServerManager.saveToCache([server]);
+            completer.complete();
+          }
+        },
+        onDone: () {
+          if (!completer.isCompleted) completer.complete();
+        },
+      );
+
+      await completer.future;
+      await subscription.cancel();
+    } else {
+      // Si hay caché, dejamos que HomeScreen se encargue de refrescar en background
+    }
+
+    // 2. Cargar estado de login
+    final prefs = await SharedPreferences.getInstance();
+    final loggedIn = prefs.getBool('isLoggedIn') ?? false;
+
+    if (mounted) {
+      setState(() {
+        _isLoggedIn = loggedIn;
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _toggleTheme() {
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _themeMode =
+          _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
+    return MaterialApp(
+      title: 'Replicator Login',
+      debugShowCheckedModeBanner: false,
+      themeMode: _themeMode,
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      // Si está logueado mostramos Home, si no, Login
+      home:
+          _isLoading
+              ? const SplashScreen()
+              : (_isLoggedIn
+                  ? HomeScreen(
+                    onThemeToggle: _toggleTheme,
+                    isDarkMode: _themeMode == ThemeMode.dark,
+                  )
+                  : LoginScreen(
+                    onThemeToggle: _toggleTheme,
+                    isDarkMode: _themeMode == ThemeMode.dark,
+                  )),
+    );
+  }
+}
+
+class SplashScreen extends StatelessWidget {
+  const SplashScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
           mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+          children: [
+            AppLogo(height: 120, isDarkMode: isDark),
+            const SizedBox(height: 40),
+            const SizedBox(
+              width: 40,
+              height: 40,
+              child: CircularProgressIndicator(strokeWidth: 3),
             ),
+            const SizedBox(height: 20),
+            const Text("Cargando sistema...", style: TextStyle(fontSize: 16)),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
