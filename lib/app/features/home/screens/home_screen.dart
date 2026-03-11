@@ -554,8 +554,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _refreshServers() async {
     // Usamos apiUrl como clave para asegurar que coincida el endpoint con la caché
 
+    final validEndpoints = ServerManager.apiEndpoints.toSet();
+
     final Map<String, ServerData> currentMap = {
-      for (var s in servers) s.apiUrl: s,
+      for (var s in servers)
+        if (validEndpoints.contains(s.apiUrl)) s.apiUrl: s,
     };
 
     final stream = ServerManager.streamServers();
@@ -1669,10 +1672,6 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
 
   bool isLoading = true;
 
-  List<String> userLogs = [];
-
-  bool loadingLogs = false;
-
   @override
   void initState() {
     super.initState();
@@ -1751,34 +1750,6 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
     }
   }
 
-  Future<void> fetchUserLogs(String username) async {
-    setState(() {
-      loadingLogs = true;
-
-      userLogs = [];
-    });
-
-    try {
-      final url = '${widget.server.apiUrl}/$username/logs';
-
-      final response = await http.get(Uri.parse(url));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-
-        if (data is Map && data.containsKey('logs')) {
-          setState(() => userLogs = List<String>.from(data['logs']));
-        }
-      }
-    } catch (e) {
-      debugPrint('Error fetching user logs: $e');
-
-      setState(() => userLogs = ['Error al obtener logs: $e']);
-    } finally {
-      if (mounted) setState(() => loadingLogs = false);
-    }
-  }
-
   void navigateToUserDetail() {
     if (selectedUser != null) {
       Navigator.push(
@@ -1823,7 +1794,8 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
         ),
       ),
 
-      body: Center(
+      body: Align(
+        alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1000),
 
@@ -1844,256 +1816,227 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
 
                     children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.search_rounded,
-
-                            color: AppTheme.primaryBlue,
-                          ),
-
-                          const SizedBox(width: 8),
-
-                          Text(
-                            'Buscar Usuario',
-
-                            style: TextStyle(
-                              fontSize: 18.0,
-
-                              fontWeight: FontWeight.bold,
-
-                              color:
-                                  Theme.of(context).textTheme.titleLarge?.color,
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      Text(
-                        'Encuentra un usuario para ver sus colas de paquetes.',
-
-                        style: TextStyle(
-                          fontSize: 14,
-
-                          color: Theme.of(context).textTheme.bodyMedium?.color,
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      Autocomplete<Map<String, dynamic>>(
-                        optionsBuilder: (TextEditingValue textEditingValue) {
-                          if (textEditingValue.text == '') {
-                            return const Iterable<Map<String, dynamic>>.empty();
-                          }
-
-                          return users.where((dynamic option) {
-                            return option['usuario']
-                                .toString()
-                                .toLowerCase()
-                                .contains(textEditingValue.text.toLowerCase());
-                          }).cast<Map<String, dynamic>>();
-                        },
-
-                        displayStringForOption:
-                            (Map<String, dynamic> option) => option['usuario'],
-
-                        onSelected: (Map<String, dynamic> selection) {
-                          setState(() {
-                            selectedUser = selection;
-
-                            FocusScope.of(context).unfocus(); // Ocultar teclado
-                          });
-
-                          refreshUserFiles(selection['usuario']);
-
-                          fetchUserLogs(selection['usuario']);
-                        },
-
-                        fieldViewBuilder: (
-                          context,
-
-                          textEditingController,
-
-                          focusNode,
-
-                          onFieldSubmitted,
-                        ) {
-                          return TextField(
-                            controller: textEditingController,
-
-                            focusNode:
-                                focusNode, // Usar el nodo del Autocomplete para que funcione la lista
-
-                            onTap: () {
-                              textEditingController.clear();
-
-                              setState(() {
-                                selectedUser = null;
-
-                                userLogs = [];
-                              });
-                            },
-
-                            onChanged: (value) {
-                              if (value.isEmpty) {
-                                setState(() => selectedUser = null);
-
-                                setState(() => userLogs = []);
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          return Autocomplete<Map<String, dynamic>>(
+                            optionsBuilder: (
+                              TextEditingValue textEditingValue,
+                            ) {
+                              if (textEditingValue.text == '') {
+                                return const Iterable<
+                                  Map<String, dynamic>
+                                >.empty();
                               }
+
+                              return users.where((dynamic option) {
+                                return option['usuario']
+                                    .toString()
+                                    .toLowerCase()
+                                    .contains(
+                                      textEditingValue.text.toLowerCase(),
+                                    );
+                              }).cast<Map<String, dynamic>>();
                             },
 
-                            style: TextStyle(
-                              color:
-                                  Theme.of(context).textTheme.bodyLarge?.color,
-                            ),
+                            displayStringForOption:
+                                (Map<String, dynamic> option) =>
+                                    option['usuario'],
 
-                            decoration: InputDecoration(
-                              hintText:
-                                  isLoading
-                                      ? 'Cargando usuarios...'
-                                      : 'Nombre de usuario...',
-
-                              hintStyle: TextStyle(
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).textTheme.bodyMedium?.color,
-                              ),
-
-                              prefixIcon: Icon(
-                                Icons.person_rounded,
-
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).textTheme.bodyMedium?.color,
-                              ),
-
-                              filled: true,
-
-                              fillColor:
-                                  Theme.of(context).scaffoldBackgroundColor,
-
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-
-                                borderSide: BorderSide.none,
-                              ),
-
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-
-                                borderSide: const BorderSide(
-                                  color: AppTheme.primaryBlue,
-
-                                  width: 1,
-                                ),
-                              ),
-                            ),
-
-                            onSubmitted: (String value) {
-                              if (value.isEmpty) return;
-
-                              final normalizedValue = value.toLowerCase();
-
-                              // Buscar coincidencias en la lista de usuarios
-
-                              final matches =
-                                  users.where((user) {
-                                    return user['usuario']
-                                        .toString()
-                                        .toLowerCase()
-                                        .contains(normalizedValue);
-                                  }).toList();
-
-                              if (matches.isNotEmpty) {
-                                // Seleccionar el primer resultado (predicción)
-
-                                final selection = matches.first;
-
-                                setState(() {
-                                  selectedUser = selection;
-                                });
+                            onSelected: (Map<String, dynamic> selection) {
+                              setState(() {
+                                selectedUser = selection;
 
                                 FocusScope.of(
                                   context,
                                 ).unfocus(); // Ocultar teclado
+                              });
 
-                                textEditingController.text =
-                                    selection['usuario'];
-
-                                refreshUserFiles(selection['usuario']);
-
-                                fetchUserLogs(selection['usuario']);
-
-                                // Si el texto ya coincidía exactamente, navegar a detalles
-
-                                if (selection['usuario']
-                                        .toString()
-                                        .toLowerCase() ==
-                                    normalizedValue) {
-                                  navigateToUserDetail();
-                                }
-                              }
+                              refreshUserFiles(selection['usuario']);
                             },
-                          );
-                        },
 
-                        optionsViewBuilder: (context, onSelected, options) {
-                          return Align(
-                            alignment: Alignment.topLeft,
+                            fieldViewBuilder: (
+                              context,
 
-                            child: Material(
-                              elevation: 4.0,
+                              textEditingController,
 
-                              color: Theme.of(context).cardColor,
+                              focusNode,
 
-                              borderRadius: BorderRadius.circular(12),
+                              onFieldSubmitted,
+                            ) {
+                              return TextField(
+                                autofocus: true,
 
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxHeight: 200,
+                                controller: textEditingController,
 
-                                  maxWidth: 300,
+                                focusNode:
+                                    focusNode, // Usar el nodo del Autocomplete para que funcione la lista
+
+                                onTap: () {
+                                  textEditingController.clear();
+
+                                  setState(() {
+                                    selectedUser = null;
+                                  });
+                                },
+
+                                onChanged: (value) {
+                                  if (value.isEmpty) {
+                                    setState(() => selectedUser = null);
+                                  }
+                                },
+
+                                style: TextStyle(
+                                  color:
+                                      Theme.of(
+                                        context,
+                                      ).textTheme.bodyLarge?.color,
                                 ),
 
-                                child: ListView.builder(
-                                  padding: EdgeInsets.zero,
+                                decoration: InputDecoration(
+                                  hintText:
+                                      isLoading
+                                          ? 'Cargando usuarios...'
+                                          : 'Nombre de usuario...',
 
-                                  shrinkWrap: true,
+                                  hintStyle: TextStyle(
+                                    color:
+                                        Theme.of(
+                                          context,
+                                        ).textTheme.bodyMedium?.color,
+                                  ),
 
-                                  itemCount: options.length,
+                                  prefixIcon: Icon(
+                                    Icons.search_rounded,
 
-                                  itemBuilder: (
-                                    BuildContext context,
+                                    color:
+                                        Theme.of(
+                                          context,
+                                        ).textTheme.bodyMedium?.color,
+                                  ),
 
-                                    int index,
-                                  ) {
-                                    final option = options.elementAt(index);
+                                  filled: true,
 
-                                    return ListTile(
-                                      title: Text(
-                                        option['usuario'],
+                                  fillColor:
+                                      Theme.of(context).scaffoldBackgroundColor,
 
-                                        style: TextStyle(
-                                          color:
-                                              Theme.of(
-                                                context,
-                                              ).textTheme.bodyLarge?.color,
-                                        ),
-                                      ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
 
-                                      onTap: () {
-                                        onSelected(option);
+                                    borderSide: BorderSide.none,
+                                  ),
+
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+
+                                    borderSide: const BorderSide(
+                                      color: AppTheme.primaryBlue,
+
+                                      width: 1,
+                                    ),
+                                  ),
+                                ),
+
+                                onSubmitted: (String value) {
+                                  if (value.isEmpty) return;
+
+                                  final normalizedValue = value.toLowerCase();
+
+                                  // Buscar coincidencias en la lista de usuarios
+
+                                  final matches =
+                                      users.where((user) {
+                                        return user['usuario']
+                                            .toString()
+                                            .toLowerCase()
+                                            .contains(normalizedValue);
+                                      }).toList();
+
+                                  if (matches.isNotEmpty) {
+                                    // Seleccionar el primer resultado (predicción)
+
+                                    final selection = matches.first;
+
+                                    setState(() {
+                                      selectedUser = selection;
+                                    });
+
+                                    FocusScope.of(
+                                      context,
+                                    ).unfocus(); // Ocultar teclado
+
+                                    textEditingController.text =
+                                        selection['usuario'];
+
+                                    refreshUserFiles(selection['usuario']);
+
+                                    // Si el texto ya coincidía exactamente, navegar a detalles
+
+                                    if (selection['usuario']
+                                            .toString()
+                                            .toLowerCase() ==
+                                        normalizedValue) {
+                                      navigateToUserDetail();
+                                    }
+                                  }
+                                },
+                              );
+                            },
+
+                            optionsViewBuilder: (context, onSelected, options) {
+                              return Align(
+                                alignment: Alignment.topLeft,
+
+                                child: Material(
+                                  elevation: 4.0,
+
+                                  color: Theme.of(context).cardColor,
+
+                                  borderRadius: BorderRadius.circular(12),
+
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      maxHeight: 200,
+                                      maxWidth:
+                                          constraints
+                                              .maxWidth, // Usamos el ancho del LayoutBuilder
+                                    ),
+
+                                    child: ListView.builder(
+                                      padding: EdgeInsets.zero,
+
+                                      shrinkWrap: true,
+
+                                      itemCount: options.length,
+
+                                      itemBuilder: (
+                                        BuildContext context,
+
+                                        int index,
+                                      ) {
+                                        final option = options.elementAt(index);
+
+                                        return ListTile(
+                                          title: Text(
+                                            option['usuario'],
+
+                                            style: TextStyle(
+                                              color:
+                                                  Theme.of(
+                                                    context,
+                                                  ).textTheme.bodyLarge?.color,
+                                            ),
+                                          ),
+
+                                          onTap: () {
+                                            onSelected(option);
+                                          },
+                                        );
                                       },
-                                    );
-                                  },
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
+                              );
+                            },
                           );
                         },
                       ),
@@ -2238,7 +2181,7 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                                   const SizedBox(width: 12),
 
                                   Text(
-                                    'Cola de Entrada Global',
+                                    'Cola de entrada',
 
                                     style: TextStyle(
                                       color:
@@ -2341,7 +2284,7 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                                   const SizedBox(width: 12),
 
                                   Text(
-                                    'Colas de Salida Totales',
+                                    'Cola de salida',
 
                                     style: TextStyle(
                                       color:
@@ -2405,171 +2348,6 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                   ),
 
                 const SizedBox(height: 24),
-
-                // CONSOLA DE LOGS
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-                  children: [
-                    Text(
-                      selectedUser != null
-                          ? 'LOGS ${selectedUser!['usuario']}'
-                          : 'CONSOLA / LOGS EN VIVO',
-
-                      style: TextStyle(
-                        fontSize: 14,
-
-                        fontWeight: FontWeight.bold,
-
-                        color: Theme.of(context).textTheme.bodyMedium?.color,
-
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-
-                    TextButton.icon(
-                      onPressed: () {
-                        if (userLogs.isNotEmpty) {
-                          Clipboard.setData(
-                            ClipboardData(text: userLogs.join('\n')),
-                          );
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Logs copiados al portapapeles'),
-
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                      },
-
-                      icon: const Icon(Icons.copy_all_rounded, size: 14),
-
-                      label: const Text(
-                        'Copiar',
-
-                        style: TextStyle(fontSize: 12),
-                      ),
-
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppTheme.primaryBlue,
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 8),
-
-                Container(
-                  width: double.infinity,
-
-                  padding: const EdgeInsets.all(16),
-
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-
-                    borderRadius: BorderRadius.circular(16),
-
-                    border: Border.all(color: Theme.of(context).dividerColor),
-                  ),
-
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-
-                    children:
-                        selectedUser != null
-                            ? (loadingLogs
-                                ? [
-                                  const Center(
-                                    child: CircularProgressIndicator(),
-                                  ),
-                                ]
-                                : userLogs.isEmpty
-                                ? [
-                                  Text(
-                                    'No hay logs recientes.',
-
-                                    style: TextStyle(
-                                      color:
-                                          Theme.of(
-                                            context,
-                                          ).textTheme.bodyMedium?.color,
-                                    ),
-                                  ),
-                                ]
-                                : userLogs
-                                    .map(
-                                      (line) => Text(
-                                        line,
-
-                                        style: AppTheme.monoStyle.copyWith(
-                                          fontSize: 12,
-
-                                          color:
-                                              Theme.of(
-                                                context,
-                                              ).textTheme.bodyMedium?.color,
-                                        ),
-                                      ),
-                                    )
-                                    .toList())
-                            : widget.server.logs
-                                .map(
-                                  (log) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 8.0),
-
-                                    child: RichText(
-                                      text: TextSpan(
-                                        style: AppTheme.monoStyle.copyWith(
-                                          fontSize: 12,
-                                        ),
-
-                                        children: [
-                                          TextSpan(
-                                            text: '[${log.time}] ',
-
-                                            style: TextStyle(
-                                              color:
-                                                  Theme.of(
-                                                    context,
-                                                  ).textTheme.bodyMedium?.color,
-                                            ),
-                                          ),
-
-                                          TextSpan(
-                                            text: '${log.type.toUpperCase()}: ',
-
-                                            style: TextStyle(
-                                              color:
-                                                  log.type == 'error'
-                                                      ? AppTheme.errorRed
-                                                      : log.type == 'warn'
-                                                      ? AppTheme.warningAmber
-                                                      : AppTheme.successGreen,
-
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-
-                                          TextSpan(
-                                            text: log.msg,
-
-                                            style: TextStyle(
-                                              color:
-                                                  Theme.of(
-                                                    context,
-                                                  ).textTheme.bodyMedium?.color,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                  ),
-                ),
               ],
             ),
           ),
@@ -2615,6 +2393,13 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
 
   Timer? pollingTimer;
 
+  // Estado para los logs
+  List<String> userLogs = [];
+
+  bool loadingLogs = true;
+
+  bool _isOutputExpanded = false;
+
   @override
   void initState() {
     super.initState();
@@ -2634,6 +2419,9 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
     if (currentUserData['archivos']['status'] == 'calculating' || hasPending) {
       startPolling();
     }
+
+    // Cargar los logs al iniciar la pantalla
+    fetchUserLogs();
   }
 
   @override
@@ -2709,6 +2497,45 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
     } catch (e) {
       debugPrint('Error refreshing data manually: $e');
     }
+  }
+
+  Future<void> fetchUserLogs() async {
+    if (!mounted) return;
+    setState(() {
+      loadingLogs = true;
+      userLogs = [];
+    });
+
+    try {
+      final url = '${widget.apiUrl}/${widget.username}/logs';
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is Map && data.containsKey('logs')) {
+          if (mounted) {
+            setState(() => userLogs = List<String>.from(data['logs']));
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching user logs: $e');
+      if (mounted) {
+        setState(() => userLogs = ['Error al obtener logs: $e']);
+      }
+    } finally {
+      if (mounted) setState(() => loadingLogs = false);
+    }
+  }
+
+  void copyLogsToClipboard() {
+    if (userLogs.isEmpty) return;
+    Clipboard.setData(ClipboardData(text: userLogs.join('\n')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Logs copiados al portapapeles'),
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   Future<void> handleRestartService() async {
@@ -2871,7 +2698,8 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
         ),
       ),
 
-      body: Center(
+      body: Align(
+        alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1000),
 
@@ -2914,54 +2742,50 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                   ),
 
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      // COLUMNA IZQUIERDA: Info Usuario
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-
                           children: [
                             Text(
                               widget.username,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                // Mantener blanco porque el fondo es oscuro (gradient)
-                                fontSize: 18,
-
+                                fontSize: 16,
                                 fontWeight: FontWeight.bold,
-
                                 color:
                                     Theme.of(
                                       context,
                                     ).textTheme.titleLarge?.color,
                               ),
                             ),
-
                             const SizedBox(height: 4),
-
                             Row(
                               children: [
                                 Icon(
                                   Icons.dns_rounded,
-
-                                  size: 16,
-
+                                  size: 14,
                                   color:
                                       Theme.of(
                                         context,
                                       ).textTheme.bodyMedium?.color,
                                 ),
-
-                                const SizedBox(width: 4),
-
-                                Text(
-                                  'Alojado en ${widget.serverName}',
-
-                                  style: TextStyle(
-                                    color:
-                                        Theme.of(
-                                          context,
-                                        ).textTheme.bodyMedium?.color,
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'Alojado en ${widget.serverName}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color:
+                                          Theme.of(
+                                            context,
+                                          ).textTheme.bodyMedium?.color,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -2970,25 +2794,120 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                         ),
                       ),
 
-                      Container(
-                        decoration: BoxDecoration(
-                          color: AppTheme.errorRed.withOpacity(0.1),
+                      const SizedBox(width: 16),
 
-                          borderRadius: BorderRadius.circular(12),
+                      // COLUMNA DERECHA: Acciones y Tags (Ancho intrínseco)
+                      IntrinsicWidth(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Botón Reiniciar (Estilo alargado)
+                            InkWell(
+                              onTap: handleRestartService,
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 6,
+                                  horizontal: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.errorRed.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: AppTheme.errorRed.withOpacity(0.3),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(
+                                      Icons.restart_alt_rounded,
+                                      size: 14,
+                                      color: AppTheme.errorRed,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    const Text(
+                                      'REINICIAR',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.errorRed,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
 
-                          border: Border.all(
-                            color: AppTheme.errorRed.withOpacity(0.3),
-                          ),
-                        ),
+                            const SizedBox(height: 6),
 
-                        child: IconButton(
-                          icon: const Icon(Icons.restart_alt_rounded),
-
-                          color: AppTheme.errorRed,
-
-                          tooltip: 'Reiniciar Servicio Replicator',
-
-                          onPressed: handleRestartService,
+                            // ETIQUETAS
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                if (widget.userData['tipo_instalacion'] ==
+                                        'server_node' ||
+                                    widget.userData['tipo_instalacion'] ==
+                                        'server')
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.primaryBlue.withOpacity(
+                                        0.1,
+                                      ),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: AppTheme.primaryBlue.withOpacity(
+                                          0.3,
+                                        ),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'SERVER',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.primaryBlue,
+                                      ),
+                                    ),
+                                  ),
+                                if (widget.userData['tipo_instalacion'] ==
+                                    'server_node')
+                                  const SizedBox(width: 6),
+                                if (widget.userData['tipo_instalacion'] ==
+                                        'server_node' ||
+                                    widget.userData['tipo_instalacion'] ==
+                                        'node')
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.successGreen.withOpacity(
+                                        0.1,
+                                      ),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: AppTheme.successGreen
+                                            .withOpacity(0.3),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'NODE',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.successGreen,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -3077,102 +2996,244 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
 
                 const SizedBox(height: 24),
 
-                Text(
-                  'Colas de Salida / output (${outputs.length})',
-
-                  style: TextStyle(
-                    fontSize: 14,
-
-                    fontWeight: FontWeight.bold,
-
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
-
-                    letterSpacing: 1.0,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _isOutputExpanded = !_isOutputExpanded;
+                        });
+                      },
+                      child: Text(
+                        'Colas de Salida / output (${outputs.length})',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).textTheme.bodyMedium?.color,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        setState(() {
+                          _isOutputExpanded = !_isOutputExpanded;
+                        });
+                      },
+                      icon: Icon(
+                        _isOutputExpanded
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        color: Theme.of(context).textTheme.bodyMedium?.color,
+                        size: 18,
+                      ),
+                    ),
+                  ],
                 ),
 
                 const SizedBox(height: 12),
 
-                ...sortedKeys.map((key) {
-                  // Limpiar nombre para mostrar (quitar GUID si es muy largo o dejarlo como referencia)
-
-                  // Mostramos la clave completa o la última parte si tiene '/'
-
-                  String displayName = key;
-
-                  final value = outputs[key];
-
-                  if (displayName.contains('/')) {
-                    displayName = displayName.split('/').last;
-                  }
-
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12.0),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 16,
-                      ),
-                      decoration: AppTheme.cardDecoration(context),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.folder_open_rounded,
-                            size: 20,
-                            color: AppTheme.primaryBlue,
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.fastOutSlowIn,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (outputs.isNotEmpty)
+                        ...sortedKeys
+                            .take(_isOutputExpanded ? sortedKeys.length : 1)
+                            .map((key) {
+                              String displayName = key;
+                              final value = outputs[key];
+                              if (displayName.contains('/')) {
+                                displayName = displayName.split('/').last;
+                              }
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 12.0),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 16,
+                                  ),
+                                  decoration: AppTheme.cardDecoration(context),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.arrow_upward_rounded,
+                                        size: 20,
+                                        color: AppTheme.errorRed,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          displayName,
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color:
+                                                Theme.of(
+                                                  context,
+                                                ).textTheme.bodyLarge?.color,
+                                          ),
+                                        ),
+                                      ),
+                                      if (value.toString() == '-1')
+                                        const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      else
+                                        Text(
+                                          '$value paquetes',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color:
+                                                (int.tryParse(
+                                                              value.toString(),
+                                                            ) ??
+                                                            0) >
+                                                        0
+                                                    ? AppTheme.primaryBlue
+                                                    : Theme.of(context)
+                                                        .textTheme
+                                                        .bodyMedium
+                                                        ?.color,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            })
+                      else if (_isOutputExpanded)
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text(
+                            "No hay colas de salida configuradas.",
+                            style: TextStyle(
+                              color:
+                                  Theme.of(context).textTheme.bodyMedium?.color,
+                            ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
+                        ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 32),
+
+                // CONSOLA DE LOGS (Movida aquí)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'CONSOLA / LOGS',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).textTheme.bodyMedium?.color,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        if (userLogs.isNotEmpty)
+                          TextButton.icon(
+                            onPressed: copyLogsToClipboard,
+                            icon: const Icon(Icons.copy_all_rounded, size: 14),
+                            label: const Text(
+                              'Copiar',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppTheme.primaryBlue,
+                            ),
+                          ),
+                        IconButton(
+                          onPressed: fetchUserLogs,
+                          icon: Icon(
+                            Icons.refresh_rounded,
+                            color:
+                                Theme.of(context).textTheme.bodyMedium?.color,
+                            size: 18,
+                          ),
+                          tooltip: 'Refrescar Logs',
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  height: 250, // Altura fija para la consola
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Theme.of(context).dividerColor),
+                  ),
+                  child:
+                      loadingLogs
+                          ? const Center(child: CircularProgressIndicator())
+                          : userLogs.isEmpty
+                          ? Center(
                             child: Text(
-                              displayName,
+                              'No hay logs recientes para mostrar.',
                               style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
                                 color:
                                     Theme.of(
                                       context,
-                                    ).textTheme.bodyLarge?.color,
+                                    ).textTheme.bodyMedium?.color,
                               ),
+                            ),
+                          )
+                          : Scrollbar(
+                            thumbVisibility: true,
+                            child: ListView.builder(
+                              itemCount: userLogs.length,
+                              itemBuilder: (context, index) {
+                                final line = userLogs[index];
+                                Color lineColor =
+                                    Theme.of(
+                                      context,
+                                    ).textTheme.bodyMedium?.color ??
+                                    Colors.grey;
+                                FontWeight fontWeight = FontWeight.normal;
+
+                                if (line.toLowerCase().contains('error')) {
+                                  lineColor = AppTheme.errorRed;
+                                } else if (line.toLowerCase().contains(
+                                  'warn',
+                                )) {
+                                  lineColor = AppTheme.warningAmber;
+                                } else if (line.toLowerCase().startsWith(
+                                  '---',
+                                )) {
+                                  lineColor = AppTheme.primaryBlue;
+                                  fontWeight = FontWeight.bold;
+                                }
+
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 4.0),
+                                  child: Text(
+                                    line,
+                                    style: AppTheme.monoStyle.copyWith(
+                                      fontSize: 12,
+                                      color: lineColor,
+                                      fontWeight: fontWeight,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ),
-                          if (value.toString() == '-1')
-                            const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          else
-                            Text(
-                              '$value paquetes',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color:
-                                    (int.tryParse(value.toString()) ?? 0) > 0
-                                        ? AppTheme.primaryBlue
-                                        : Theme.of(
-                                          context,
-                                        ).textTheme.bodyMedium?.color,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  );
-                }),
-
-                if (outputs.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-
-                    child: Text(
-                      "No hay colas de salida configuradas.",
-
-                      style: TextStyle(
-                        color: Theme.of(context).textTheme.bodyMedium?.color,
-                      ),
-                    ),
-                  ),
+                ),
               ],
             ),
           ),
