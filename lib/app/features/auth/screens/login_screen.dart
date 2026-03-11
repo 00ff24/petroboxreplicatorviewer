@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:replicatorviewer/app/common/widgets/app_logo.dart';
 import 'package:replicatorviewer/app/features/auth/widgets/login_form.dart';
-import 'package:replicatorviewer/app/features/auth/widgets/social_login_section.dart';
 
 class LoginScreen extends StatelessWidget {
   final VoidCallback onThemeToggle;
@@ -55,52 +54,11 @@ class LoginScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 30),
                 LoginForm(onThemeToggle: onThemeToggle, isDarkMode: isDarkMode),
-                const SizedBox(height: 20),
-                const SocialLoginSection(),
-                const SizedBox(height: 30),
-                _buildRegisterLink(context, theme.textTheme.bodyMedium?.color ?? Colors.grey),
               ],
             ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildRegisterLink(BuildContext context, Color textColor) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text("¿No tienes cuenta? ", style: TextStyle(color: textColor)),
-        GestureDetector(
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text(
-                  'Esta funcionalidad aun no esta disponible',
-                  style: TextStyle(color: Colors.white),
-                ),
-                backgroundColor: Theme.of(context).primaryColor,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                margin: const EdgeInsets.symmetric(
-                  vertical: 16,
-                  horizontal: 32,
-                ),
-              ),
-            );
-          },
-          child: Text(
-            "Regístrate",
-            style: TextStyle(
-              color: Theme.of(context).primaryColor,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
