@@ -1668,7 +1668,9 @@ class ServerDetailScreen extends StatefulWidget {
 class _ServerDetailScreenState extends State<ServerDetailScreen> {
   List<dynamic> users = [];
 
-  Map<String, dynamic>? selectedUser;
+  Map<String, dynamic>? selectedUser; // Usuario seleccionado en el buscador
+  Map<String, dynamic>? _detailedUser; // Usuario "fijado" para mostrar detalles
+  bool _isUserDetailExpanded = false; // Controla si el panel está expandido
 
   bool isLoading = true;
 
@@ -1750,24 +1752,107 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
     }
   }
 
-  void navigateToUserDetail() {
-    if (selectedUser != null) {
-      Navigator.push(
-        context,
+  Future<void> handleRestartService(Map<String, dynamic> user) async {
+    final String type = user['tipo_instalacion'] ?? 'server';
+    final String username = user['usuario'];
+    String title = 'Reiniciar Servicio';
+    String content = '';
 
-        MaterialPageRoute(
-          builder:
-              (_) => UserDetailScreen(
-                username: selectedUser!['usuario'],
+    if (type == 'server_node') {
+      content =
+          'Se reiniciarán los servicios:\n- petroboxreplicatorserver\n- petroboxreplicatornode\n\n¿Estás seguro?';
+    } else if (type == 'node') {
+      content =
+          'Se reiniciará el servicio:\n- petroboxreplicatornode\n\n¿Estás seguro?';
+    } else {
+      content =
+          'Se reiniciará el servicio:\n- petroboxreplicatorserver\n\n¿Estás seguro?';
+    }
 
-                serverName: widget.server.name,
-
-                apiUrl: widget.server.apiUrl,
-
-                userData: selectedUser!,
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: Theme.of(context).cardColor,
+            title: Row(
+              children: [
+                const Icon(
+                  Icons.warning_amber_rounded,
+                  color: AppTheme.warningAmber,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: Theme.of(context).textTheme.titleLarge?.color,
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              content,
+              style: TextStyle(
+                color: Theme.of(context).textTheme.bodyMedium?.color,
               ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.errorRed,
+                ),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text(
+                  'Reiniciar',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+    );
+
+    if (confirm == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enviando orden de reinicio...'),
+          backgroundColor: AppTheme.primaryBlue,
         ),
       );
+
+      try {
+        final url = '${widget.server.apiUrl}/$username/reiniciar-servicios';
+        final response = await http.post(Uri.parse(url));
+
+        if (mounted) {
+          if (response.statusCode == 200) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Servicios reiniciados correctamente.'),
+                backgroundColor: AppTheme.successGreen,
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error al reiniciar: ${response.body}'),
+                backgroundColor: AppTheme.errorRed,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error de conexión: $e'),
+              backgroundColor: AppTheme.errorRed,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -1844,8 +1929,11 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
 
                             onSelected: (Map<String, dynamic> selection) {
                               setState(() {
-                                selectedUser = selection;
-
+                                selectedUser =
+                                    selection; // Actualiza el usuario de la búsqueda
+                                _detailedUser =
+                                    null; // Resetea la vista de detalles
+                                _isUserDetailExpanded = false;
                                 FocusScope.of(
                                   context,
                                 ).unfocus(); // Ocultar teclado
@@ -1876,12 +1964,16 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
 
                                   setState(() {
                                     selectedUser = null;
+                                    _detailedUser = null;
+                                    _isUserDetailExpanded = false;
                                   });
                                 },
 
                                 onChanged: (value) {
                                   if (value.isEmpty) {
                                     setState(() => selectedUser = null);
+                                    _detailedUser = null;
+                                    _isUserDetailExpanded = false;
                                   }
                                 },
 
@@ -1971,11 +2063,12 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
 
                                     // Si el texto ya coincidía exactamente, navegar a detalles
 
-                                    if (selection['usuario']
-                                            .toString()
-                                            .toLowerCase() ==
-                                        normalizedValue) {
-                                      navigateToUserDetail();
+                                    if (selection['usuario'].toString() ==
+                                        normalizedValue.toString()) {
+                                      setState(() {
+                                        _detailedUser = selection;
+                                        _isUserDetailExpanded = true;
+                                      });
                                     }
                                   }
                                 },
@@ -2058,13 +2151,19 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                           ),
 
                           onPressed:
-                              (selectedUser != null &&
+                              (selectedUser !=
+                                          null && // Hay un usuario seleccionado
+                                      _detailedUser ==
+                                          null && // Y aún no hemos mostrado sus detalles
                                       (selectedUser!['archivos']['status'] ==
                                               'ok' ||
                                           selectedUser!['archivos']['status'] ==
                                               'calculating'))
-                                  ? navigateToUserDetail
-                                  : null,
+                                  ? () => setState(() {
+                                    _detailedUser = selectedUser;
+                                    _isUserDetailExpanded = true;
+                                  })
+                                  : null, // Deshabilitado si ya se mostraron detalles o no hay usuario
 
                           child:
                               (selectedUser != null &&
@@ -2114,229 +2213,332 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                   ),
                 ),
 
-                const SizedBox(height: 24),
-
-                // SERVICIOS
-                Text(
-                  'Cantidad de Paquetes',
-
-                  style: TextStyle(
-                    fontSize: 14,
-
-                    fontWeight: FontWeight.bold,
-
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
-
-                    letterSpacing: 1.0,
-                  ),
-                ),
-
                 const SizedBox(height: 12),
 
                 if (selectedUser != null)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-
-                    decoration: AppTheme.cardDecoration(context),
-
-                    clipBehavior: Clip.antiAlias,
-
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(16),
-
-                          decoration: BoxDecoration(
-                            border: Border(
-                              bottom: BorderSide(color: AppTheme.borderColor),
-                            ),
+                  Column(
+                    children: [
+                      // --- HEADER DEL USUARIO (MOVIDO AQUÍ) ---
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Theme.of(context).cardColor,
+                              Theme.of(context).scaffoldBackgroundColor,
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
-
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(
-                                        context,
-                                      ).dividerColor.withOpacity(0.1),
-
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-
-                                    child: const Icon(
-                                      Icons.arrow_downward_rounded,
-
-                                      color: AppTheme.successGreen,
-
-                                      size: 16,
-                                    ),
-                                  ),
-
-                                  const SizedBox(width: 12),
-
-                                  Text(
-                                    'Cola de entrada',
-
-                                    style: TextStyle(
-                                      color:
-                                          Theme.of(
-                                            context,
-                                          ).textTheme.bodyMedium?.color,
-
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              Row(
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: Theme.of(context).dividerColor,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Theme.of(
+                                context,
+                              ).shadowColor.withOpacity(0.1),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // COLUMNA IZQUIERDA: Info Usuario
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    '${selectedUser!['archivos']['input']} ',
-
+                                    selectedUser!['usuario'],
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
                                       color:
                                           Theme.of(
                                             context,
                                           ).textTheme.titleLarge?.color,
-
-                                      fontWeight: FontWeight.bold,
-
-                                      fontSize: 18,
                                     ),
                                   ),
-
-                                  if (selectedUser!['archivos']['status'] ==
-                                      'cargando')
-                                    const SizedBox(
-                                      width: 16,
-
-                                      height: 16,
-
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.dns_rounded,
+                                        size: 14,
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).textTheme.bodyMedium?.color,
                                       ),
-                                    )
-                                  else if (selectedUser!['archivos']['status'] ==
-                                          'ok' ||
-                                      selectedUser!['archivos']['status'] ==
-                                          'calculating')
-                                    const Icon(
-                                      Icons.check_circle_rounded,
-
-                                      color: AppTheme.successGreen,
-
-                                      size: 20,
-                                    )
-                                  else
-                                    const Icon(
-                                      Icons.error_outline_rounded,
-
-                                      color: AppTheme.errorRed,
-
-                                      size: 20,
-                                    ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          'Alojado en ${widget.server.name}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color:
+                                                Theme.of(
+                                                  context,
+                                                ).textTheme.bodyMedium?.color,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ],
                               ),
-                            ],
-                          ),
-                        ),
-
-                        Container(
-                          padding: const EdgeInsets.all(16),
-
-                          color: Theme.of(
-                            context,
-                          ).scaffoldBackgroundColor.withOpacity(0.5),
-
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-                            children: [
-                              Row(
+                            ),
+                            const SizedBox(width: 16),
+                            // COLUMNA DERECHA: Acciones y Tags
+                            IntrinsicWidth(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(
-                                        context,
-                                      ).dividerColor.withOpacity(0.1),
-
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-
-                                    child: const Icon(
-                                      Icons.arrow_upward_rounded,
-
-                                      color: AppTheme.primaryBlue,
-
-                                      size: 16,
+                                  InkWell(
+                                    onTap:
+                                        () =>
+                                            handleRestartService(selectedUser!),
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 6,
+                                        horizontal: 10,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.errorRed.withOpacity(
+                                          0.1,
+                                        ),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: AppTheme.errorRed.withOpacity(
+                                            0.3,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(
+                                            Icons.restart_alt_rounded,
+                                            size: 14,
+                                            color: AppTheme.errorRed,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          const Text(
+                                            'REINICIAR',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppTheme.errorRed,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
-
-                                  const SizedBox(width: 12),
-
-                                  Text(
-                                    'Cola de salida',
-
-                                    style: TextStyle(
-                                      color:
-                                          Theme.of(
-                                            context,
-                                          ).textTheme.bodyMedium?.color,
-
-                                      fontWeight: FontWeight.w500,
-                                    ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      if (selectedUser!['tipo_instalacion'] ==
+                                              'server_node' ||
+                                          selectedUser!['tipo_instalacion'] ==
+                                              'server')
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 3,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.primaryBlue
+                                                .withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
+                                            border: Border.all(
+                                              color: AppTheme.primaryBlue
+                                                  .withOpacity(0.3),
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            'SERVER',
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppTheme.primaryBlue,
+                                            ),
+                                          ),
+                                        ),
+                                      if (selectedUser!['tipo_instalacion'] ==
+                                          'server_node')
+                                        const SizedBox(width: 6),
+                                      if (selectedUser!['tipo_instalacion'] ==
+                                              'server_node' ||
+                                          selectedUser!['tipo_instalacion'] ==
+                                              'node')
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 3,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.successGreen
+                                                .withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
+                                            border: Border.all(
+                                              color: AppTheme.successGreen
+                                                  .withOpacity(0.3),
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            'NODE',
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppTheme.successGreen,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ],
                               ),
-
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-
-                                  vertical: 4,
-                                ),
-
-                                decoration: BoxDecoration(
-                                  color: Theme.of(
-                                    context,
-                                  ).dividerColor.withOpacity(0.1),
-
-                                  borderRadius: BorderRadius.circular(20),
-
-                                  border: Border.all(
-                                    color: Theme.of(context).dividerColor,
-                                  ),
-                                ),
-
-                                child: Text(
-                                  '${(selectedUser!['archivos']['output'] as Map).length} destinos',
-
-                                  style: TextStyle(
-                                    color:
-                                        Theme.of(
+                            ),
+                          ],
+                        ),
+                      ),
+                      // --- SECCIÓN EXPANDIBLE DE DETALLES ---
+                      Container(
+                        decoration: AppTheme.cardDecoration(context),
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(
+                          children: [
+                            InkWell(
+                              onTap:
+                                  _detailedUser != null
+                                      ? () => setState(
+                                        () =>
+                                            _isUserDetailExpanded =
+                                                !_isUserDetailExpanded,
+                                      )
+                                      : null,
+                              child: Container(
+                                padding: const EdgeInsets.all(16),
+                                color: Theme.of(
+                                  context,
+                                ).scaffoldBackgroundColor.withOpacity(0.5),
+                                child: Row(
+                                  children: [
+                                    // ... Icono y texto de "Cola de salida"
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(
                                           context,
-                                        ).textTheme.bodyMedium?.color,
-
-                                    fontWeight: FontWeight.bold,
-
-                                    fontSize: 12,
-                                  ),
+                                        ).dividerColor.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Icon(
+                                        _detailedUser != null
+                                            ? Icons.analytics_rounded
+                                            : Icons.arrow_upward_rounded,
+                                        color: AppTheme.primaryBlue,
+                                        size: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      _detailedUser != null
+                                          ? 'Monitorización y Logs'
+                                          : 'Cola de salida',
+                                      style: TextStyle(
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).textTheme.bodyMedium?.color,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    // ... Badge de destinos e icono de expansión
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(
+                                          context,
+                                        ).dividerColor.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: Theme.of(context).dividerColor,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '${(selectedUser!['archivos']['output'] as Map).length} destinos',
+                                        style: TextStyle(
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                    if (_detailedUser != null)
+                                      Icon(
+                                        _isUserDetailExpanded
+                                            ? Icons.keyboard_arrow_up_rounded
+                                            : Icons.keyboard_arrow_down_rounded,
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).textTheme.bodyMedium?.color,
+                                      ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                            AnimatedSize(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.fastOutSlowIn,
+                              child: Visibility(
+                                visible:
+                                    _isUserDetailExpanded &&
+                                    _detailedUser != null,
+                                maintainState: true, // <-- ¡Esta es la clave!
+                                child:
+                                    _detailedUser != null
+                                        ? UserDetailContent(
+                                          key: ValueKey(
+                                            _detailedUser!['usuario'],
+                                          ),
+                                          username: _detailedUser!['usuario'],
+                                          serverName: widget.server.name,
+                                          apiUrl: widget.server.apiUrl,
+                                          userData: _detailedUser!,
+                                        )
+                                        : const SizedBox.shrink(),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   )
                 else
                   Text(
@@ -2360,10 +2562,10 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
 // ==========================================
 
 // PANTALLA DETALLES DEL USUARIO
-
+// (Ahora un Widget embebible)
 // ==========================================
 
-class UserDetailScreen extends StatefulWidget {
+class UserDetailContent extends StatefulWidget {
   final String username;
 
   final String serverName;
@@ -2372,7 +2574,7 @@ class UserDetailScreen extends StatefulWidget {
 
   final Map<String, dynamic> userData;
 
-  const UserDetailScreen({
+  const UserDetailContent({
     super.key,
 
     required this.username,
@@ -2385,10 +2587,10 @@ class UserDetailScreen extends StatefulWidget {
   });
 
   @override
-  State<UserDetailScreen> createState() => _UserDetailScreenState();
+  State<UserDetailContent> createState() => _UserDetailContentState();
 }
 
-class _UserDetailScreenState extends State<UserDetailScreen> {
+class _UserDetailContentState extends State<UserDetailContent> {
   late Map<String, dynamic> currentUserData;
 
   Timer? pollingTimer;
@@ -2404,7 +2606,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
   void initState() {
     super.initState();
 
-    currentUserData = widget.userData;
+    currentUserData = Map<String, dynamic>.from(widget.userData);
 
     // Verificar si hay elementos pendientes (-1) o si el estado es 'calculating'
 
@@ -2538,130 +2740,6 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
     );
   }
 
-  Future<void> handleRestartService() async {
-    final String type = widget.userData['tipo_instalacion'] ?? 'server';
-
-    String title = 'Reiniciar Servicio';
-
-    String content = '';
-
-    if (type == 'server_node') {
-      content =
-          'Se reiniciarán los servicios:\n- petroboxreplicatorserver\n- petroboxreplicatornode\n\n¿Estás seguro?';
-    } else if (type == 'node') {
-      content =
-          'Se reiniciará el servicio:\n- petroboxreplicatornode\n\n¿Estás seguro?';
-    } else {
-      content =
-          'Se reiniciará el servicio:\n- petroboxreplicatorserver\n\n¿Estás seguro?';
-    }
-
-    final bool? confirm = await showDialog<bool>(
-      context: context,
-
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: Theme.of(context).cardColor,
-
-            title: Row(
-              children: [
-                const Icon(
-                  Icons.warning_amber_rounded,
-
-                  color: AppTheme.warningAmber,
-                ),
-
-                const SizedBox(width: 10),
-
-                Text(
-                  title,
-
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.titleLarge?.color,
-                  ),
-                ),
-              ],
-            ),
-
-            content: Text(
-              content,
-
-              style: TextStyle(
-                color: Theme.of(context).textTheme.bodyMedium?.color,
-              ),
-            ),
-
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-
-                child: const Text('Cancelar'),
-              ),
-
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.errorRed,
-                ),
-
-                onPressed: () => Navigator.pop(context, true),
-
-                child: const Text(
-                  'Reiniciar',
-
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-    );
-
-    if (confirm == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Enviando orden de reinicio...'),
-
-          backgroundColor: AppTheme.primaryBlue,
-        ),
-      );
-
-      try {
-        final url = '${widget.apiUrl}/${widget.username}/reiniciar-servicios';
-
-        final response = await http.post(Uri.parse(url));
-
-        if (mounted) {
-          if (response.statusCode == 200) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Servicios reiniciados correctamente.'),
-
-                backgroundColor: AppTheme.successGreen,
-              ),
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Error al reiniciar: ${response.body}'),
-
-                backgroundColor: AppTheme.errorRed,
-              ),
-            );
-          }
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error de conexión: $e'),
-
-              backgroundColor: AppTheme.errorRed,
-            ),
-          );
-        }
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     // Datos reales
@@ -2677,567 +2755,313 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
 
     final List<String> sortedKeys = outputs.keys.toList()..sort();
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+    return Container(
+      color: Theme.of(context).cardColor,
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
 
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        children: [
+          // TARJETAS DE PAQUETES
 
-        elevation: 0,
+          // Input
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
 
-        iconTheme: IconThemeData(color: Theme.of(context).iconTheme.color),
+            children: [
+              Text(
+                'Cola de entrada / input',
 
-        title: Text(
-          'Detalles del usuario',
+                style: TextStyle(
+                  fontSize: 14,
 
-          style: TextStyle(
-            color: Theme.of(context).textTheme.titleLarge?.color, // Dynamic
+                  fontWeight: FontWeight.bold,
 
-            fontWeight: FontWeight.bold,
+                  color: Theme.of(context).textTheme.bodyMedium?.color,
+
+                  letterSpacing: 1.0,
+                ),
+              ),
+
+              IconButton(
+                onPressed: refreshData,
+
+                icon: Icon(
+                  Icons.refresh_rounded,
+
+                  color: Theme.of(context).textTheme.bodyMedium?.color,
+
+                  size: 18,
+                ),
+              ),
+            ],
           ),
-        ),
-      ),
 
-      body: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1000),
+          const SizedBox(height: 12),
 
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            decoration: AppTheme.cardDecoration(context),
+            child: Row(
               children: [
-                // CABECERA USUARIO
-                Container(
-                  padding: const EdgeInsets.all(24),
-
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Theme.of(context).cardColor,
-                        Theme.of(context).scaffoldBackgroundColor,
-                      ],
-
-                      begin: Alignment.topLeft,
-
-                      end: Alignment.bottomRight,
+                const Icon(
+                  Icons.arrow_downward_rounded,
+                  size: 20,
+                  color: AppTheme.successGreen,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Paquetes Recibidos',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
                     ),
-
-                    borderRadius: BorderRadius.circular(24),
-
-                    border: Border.all(color: Theme.of(context).dividerColor),
-
-                    boxShadow: [
-                      BoxShadow(
-                        color: Theme.of(context).shadowColor.withOpacity(0.1),
-
-                        blurRadius: 10,
-
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // COLUMNA IZQUIERDA: Info Usuario
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.username,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).textTheme.titleLarge?.color,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.dns_rounded,
-                                  size: 14,
-                                  color:
-                                      Theme.of(
-                                        context,
-                                      ).textTheme.bodyMedium?.color,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    'Alojado en ${widget.serverName}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color:
-                                          Theme.of(
-                                            context,
-                                          ).textTheme.bodyMedium?.color,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(width: 16),
-
-                      // COLUMNA DERECHA: Acciones y Tags (Ancho intrínseco)
-                      IntrinsicWidth(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // Botón Reiniciar (Estilo alargado)
-                            InkWell(
-                              onTap: handleRestartService,
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 6,
-                                  horizontal: 10,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.errorRed.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: AppTheme.errorRed.withOpacity(0.3),
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Icon(
-                                      Icons.restart_alt_rounded,
-                                      size: 14,
-                                      color: AppTheme.errorRed,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    const Text(
-                                      'REINICIAR',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.errorRed,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-
-                            const SizedBox(height: 6),
-
-                            // ETIQUETAS
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                if (widget.userData['tipo_instalacion'] ==
-                                        'server_node' ||
-                                    widget.userData['tipo_instalacion'] ==
-                                        'server')
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 3,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.primaryBlue.withOpacity(
-                                        0.1,
-                                      ),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(
-                                        color: AppTheme.primaryBlue.withOpacity(
-                                          0.3,
-                                        ),
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'SERVER',
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.primaryBlue,
-                                      ),
-                                    ),
-                                  ),
-                                if (widget.userData['tipo_instalacion'] ==
-                                    'server_node')
-                                  const SizedBox(width: 6),
-                                if (widget.userData['tipo_instalacion'] ==
-                                        'server_node' ||
-                                    widget.userData['tipo_instalacion'] ==
-                                        'node')
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 3,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.successGreen.withOpacity(
-                                        0.1,
-                                      ),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(
-                                        color: AppTheme.successGreen
-                                            .withOpacity(0.3),
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'NODE',
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.successGreen,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
                   ),
                 ),
-
-                const SizedBox(height: 32),
-
-                // TARJETAS DE PAQUETES
-
-                // Input
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-                  children: [
-                    Text(
-                      'Cola de entrada / input',
-
-                      style: TextStyle(
-                        fontSize: 14,
-
-                        fontWeight: FontWeight.bold,
-
-                        color: Theme.of(context).textTheme.bodyMedium?.color,
-
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-
-                    IconButton(
-                      onPressed: refreshData,
-
-                      icon: Icon(
-                        Icons.refresh_rounded,
-
-                        color: Theme.of(context).textTheme.bodyMedium?.color,
-
-                        size: 18,
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 12),
-
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 16,
+                Text(
+                  '$inQueue paquetes',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color:
+                        inQueue > 0
+                            ? AppTheme.successGreen
+                            : Theme.of(context).textTheme.bodyMedium?.color,
                   ),
-                  decoration: AppTheme.cardDecoration(context),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.arrow_downward_rounded,
-                        size: 20,
-                        color: AppTheme.successGreen,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Paquetes Recibidos',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Theme.of(context).textTheme.bodyLarge?.color,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '$inQueue paquetes',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color:
-                              inQueue > 0
-                                  ? AppTheme.successGreen
-                                  : Theme.of(
-                                    context,
-                                  ).textTheme.bodyMedium?.color,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _isOutputExpanded = !_isOutputExpanded;
-                        });
-                      },
-                      child: Text(
-                        'Colas de Salida / output (${outputs.length})',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).textTheme.bodyMedium?.color,
-                          letterSpacing: 1.0,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () {
-                        setState(() {
-                          _isOutputExpanded = !_isOutputExpanded;
-                        });
-                      },
-                      icon: Icon(
-                        _isOutputExpanded
-                            ? Icons.keyboard_arrow_up_rounded
-                            : Icons.keyboard_arrow_down_rounded,
-                        color: Theme.of(context).textTheme.bodyMedium?.color,
-                        size: 18,
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 12),
-
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.fastOutSlowIn,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (outputs.isNotEmpty)
-                        ...sortedKeys
-                            .take(_isOutputExpanded ? sortedKeys.length : 1)
-                            .map((key) {
-                              String displayName = key;
-                              final value = outputs[key];
-                              if (displayName.contains('/')) {
-                                displayName = displayName.split('/').last;
-                              }
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 12.0),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 16,
-                                  ),
-                                  decoration: AppTheme.cardDecoration(context),
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.arrow_upward_rounded,
-                                        size: 20,
-                                        color: AppTheme.errorRed,
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Text(
-                                          displayName,
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                            color:
-                                                Theme.of(
-                                                  context,
-                                                ).textTheme.bodyLarge?.color,
-                                          ),
-                                        ),
-                                      ),
-                                      if (value.toString() == '-1')
-                                        const SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      else
-                                        Text(
-                                          '$value paquetes',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.bold,
-                                            color:
-                                                (int.tryParse(
-                                                              value.toString(),
-                                                            ) ??
-                                                            0) >
-                                                        0
-                                                    ? AppTheme.primaryBlue
-                                                    : Theme.of(context)
-                                                        .textTheme
-                                                        .bodyMedium
-                                                        ?.color,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            })
-                      else if (_isOutputExpanded)
-                        Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Text(
-                            "No hay colas de salida configuradas.",
-                            style: TextStyle(
-                              color:
-                                  Theme.of(context).textTheme.bodyMedium?.color,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 32),
-
-                // CONSOLA DE LOGS (Movida aquí)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'CONSOLA / LOGS',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).textTheme.bodyMedium?.color,
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        if (userLogs.isNotEmpty)
-                          TextButton.icon(
-                            onPressed: copyLogsToClipboard,
-                            icon: const Icon(Icons.copy_all_rounded, size: 14),
-                            label: const Text(
-                              'Copiar',
-                              style: TextStyle(fontSize: 12),
-                            ),
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppTheme.primaryBlue,
-                            ),
-                          ),
-                        IconButton(
-                          onPressed: fetchUserLogs,
-                          icon: Icon(
-                            Icons.refresh_rounded,
-                            color:
-                                Theme.of(context).textTheme.bodyMedium?.color,
-                            size: 18,
-                          ),
-                          tooltip: 'Refrescar Logs',
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  height: 250, // Altura fija para la consola
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Theme.of(context).dividerColor),
-                  ),
-                  child:
-                      loadingLogs
-                          ? const Center(child: CircularProgressIndicator())
-                          : userLogs.isEmpty
-                          ? Center(
-                            child: Text(
-                              'No hay logs recientes para mostrar.',
-                              style: TextStyle(
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).textTheme.bodyMedium?.color,
-                              ),
-                            ),
-                          )
-                          : Scrollbar(
-                            thumbVisibility: true,
-                            child: ListView.builder(
-                              itemCount: userLogs.length,
-                              itemBuilder: (context, index) {
-                                final line = userLogs[index];
-                                Color lineColor =
-                                    Theme.of(
-                                      context,
-                                    ).textTheme.bodyMedium?.color ??
-                                    Colors.grey;
-                                FontWeight fontWeight = FontWeight.normal;
-
-                                if (line.toLowerCase().contains('error')) {
-                                  lineColor = AppTheme.errorRed;
-                                } else if (line.toLowerCase().contains(
-                                  'warn',
-                                )) {
-                                  lineColor = AppTheme.warningAmber;
-                                } else if (line.toLowerCase().startsWith(
-                                  '---',
-                                )) {
-                                  lineColor = AppTheme.primaryBlue;
-                                  fontWeight = FontWeight.bold;
-                                }
-
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 4.0),
-                                  child: Text(
-                                    line,
-                                    style: AppTheme.monoStyle.copyWith(
-                                      fontSize: 12,
-                                      color: lineColor,
-                                      fontWeight: fontWeight,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
                 ),
               ],
             ),
           ),
-        ),
+
+          const SizedBox(height: 24),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _isOutputExpanded = !_isOutputExpanded;
+                  });
+                },
+                child: Text(
+                  'Colas de Salida / output (${outputs.length})',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    _isOutputExpanded = !_isOutputExpanded;
+                  });
+                },
+                icon: Icon(
+                  _isOutputExpanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  color: Theme.of(context).textTheme.bodyMedium?.color,
+                  size: 18,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.fastOutSlowIn,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (outputs.isNotEmpty)
+                  ...sortedKeys
+                      .take(_isOutputExpanded ? sortedKeys.length : 1)
+                      .map((key) {
+                        String displayName = key;
+                        final value = outputs[key];
+                        if (displayName.contains('/')) {
+                          displayName = displayName.split('/').last;
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12.0),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 16,
+                            ),
+                            decoration: AppTheme.cardDecoration(context),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.arrow_upward_rounded,
+                                  size: 20,
+                                  color: AppTheme.errorRed,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    displayName,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color:
+                                          Theme.of(
+                                            context,
+                                          ).textTheme.bodyLarge?.color,
+                                    ),
+                                  ),
+                                ),
+                                if (value.toString() == '-1')
+                                  const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                else
+                                  Text(
+                                    '$value paquetes',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color:
+                                          (int.tryParse(value.toString()) ??
+                                                      0) >
+                                                  0
+                                              ? AppTheme.primaryBlue
+                                              : Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      })
+                else if (_isOutputExpanded)
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      "No hay colas de salida configuradas.",
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyMedium?.color,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 32),
+
+          // CONSOLA DE LOGS (Movida aquí)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'CONSOLA / LOGS',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).textTheme.bodyMedium?.color,
+                  letterSpacing: 1.0,
+                ),
+              ),
+              Row(
+                children: [
+                  if (userLogs.isNotEmpty)
+                    TextButton.icon(
+                      onPressed: copyLogsToClipboard,
+                      icon: const Icon(Icons.copy_all_rounded, size: 14),
+                      label: const Text(
+                        'Copiar',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppTheme.primaryBlue,
+                      ),
+                    ),
+                  IconButton(
+                    onPressed: fetchUserLogs,
+                    icon: Icon(
+                      Icons.refresh_rounded,
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                      size: 18,
+                    ),
+                    tooltip: 'Refrescar Logs',
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            height: 250, // Altura fija para la consola
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Theme.of(context).dividerColor),
+            ),
+            child:
+                loadingLogs
+                    ? const Center(child: CircularProgressIndicator())
+                    : userLogs.isEmpty
+                    ? Center(
+                      child: Text(
+                        'No hay logs recientes para mostrar.',
+                        style: TextStyle(
+                          color: Theme.of(context).textTheme.bodyMedium?.color,
+                        ),
+                      ),
+                    )
+                    : Scrollbar(
+                      thumbVisibility: true,
+                      child: ListView.builder(
+                        itemCount: userLogs.length,
+                        itemBuilder: (context, index) {
+                          final line = userLogs[index];
+                          Color lineColor =
+                              Theme.of(context).textTheme.bodyMedium?.color ??
+                              Colors.grey;
+                          FontWeight fontWeight = FontWeight.normal;
+
+                          if (line.toLowerCase().contains('error')) {
+                            lineColor = AppTheme.errorRed;
+                          } else if (line.toLowerCase().contains('warn')) {
+                            lineColor = AppTheme.warningAmber;
+                          } else if (line.toLowerCase().startsWith('---')) {
+                            lineColor = AppTheme.primaryBlue;
+                            fontWeight = FontWeight.bold;
+                          }
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 4.0),
+                            child: Text(
+                              line,
+                              style: AppTheme.monoStyle.copyWith(
+                                fontSize: 12,
+                                color: lineColor,
+                                fontWeight: fontWeight,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+          ),
+        ],
       ),
     );
   }
