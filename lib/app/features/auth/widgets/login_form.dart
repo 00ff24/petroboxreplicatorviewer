@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:replicatorviewer/app/features/home/screens/home_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class LoginForm extends StatefulWidget {
   final VoidCallback onThemeToggle;
@@ -17,66 +19,134 @@ class LoginForm extends StatefulWidget {
 }
 
 class _LoginFormState extends State<LoginForm> {
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _emailFocusNode = FocusNode();
-  final _passwordFocusNode = FocusNode();
-  final _loginButtonFocusNode = FocusNode();
+  final _usernameController = TextEditingController();
+  final _otpController = TextEditingController();
+  final _usernameFocusNode = FocusNode();
+  final _otpFocusNode = FocusNode();
 
-  bool _isPasswordVisible = false;
+  bool _codeSent = false;
+  bool _isLoading = false;
 
   @override
   void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    _emailFocusNode.dispose();
-    _passwordFocusNode.dispose();
-    _loginButtonFocusNode.dispose();
+    _usernameController.dispose();
+    _otpController.dispose();
+    _usernameFocusNode.dispose();
+    _otpFocusNode.dispose();
     super.dispose();
   }
 
+  void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: TextStyle(color: Theme.of(context).colorScheme.onError),
+        ),
+        backgroundColor: Theme.of(context).colorScheme.error,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.symmetric(vertical: 16, horizontal: 32),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  Future<void> _sendCode() async {
+    if (_usernameController.text.trim().isEmpty) {
+      _showErrorSnackBar('Por favor, introduce tu nombre de usuario.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    _usernameFocusNode.unfocus();
+
+    try {
+      // Asumimos que el primer servidor de la lista es el de autenticación.
+      // En una app real, esta URL debería ser una constante de configuración.
+      final authServerUrl = ServerManager.apiEndpoints.first.replaceAll(
+        '/usuarios',
+        '',
+      );
+      final url = Uri.parse('$authServerUrl/auth/request-otp');
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'username': _usernameController.text.trim()}),
+      );
+
+      final responseBody = json.decode(response.body);
+
+      if (response.statusCode == 200) {
+        setState(() => _codeSent = true);
+        _otpFocusNode.requestFocus();
+      } else {
+        _showErrorSnackBar(
+          responseBody['error'] ?? 'Ocurrió un error desconocido.',
+        );
+      }
+    } catch (e) {
+      _showErrorSnackBar(
+        'Error de conexión. No se pudo contactar al servidor de autenticación.',
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _login() async {
-    // unfocus all fields
-    _emailFocusNode.unfocus();
-    _passwordFocusNode.unfocus();
-    _loginButtonFocusNode.unfocus();
+    if (_otpController.text.trim().isEmpty) {
+      _showErrorSnackBar('Por favor, introduce el código de acceso.');
+      return;
+    }
 
-    final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+    setState(() => _isLoading = true);
+    _otpFocusNode.unfocus();
 
-    if (email == 'petrobox' && password == 'petrobox') {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isLoggedIn', true);
-
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => HomeScreen(
-            onThemeToggle: widget.onThemeToggle,
-            isDarkMode: widget.isDarkMode,
-          ),
-        ),
+    try {
+      final authServerUrl = ServerManager.apiEndpoints.first.replaceAll(
+        '/usuarios',
+        '',
       );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Credenciales incorrectas',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onError,
-            ),
-          ),
-          backgroundColor: Theme.of(context).colorScheme.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          margin: const EdgeInsets.symmetric(
-            vertical: 16,
-            horizontal: 32,
-          ),
-          duration: const Duration(milliseconds: 1500),
-        ),
+      final url = Uri.parse('$authServerUrl/auth/login');
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'username': _usernameController.text.trim(),
+          'otp': _otpController.text.trim(),
+        }),
       );
+
+      if (response.statusCode == 200) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('isLoggedIn', true);
+
+        if (!mounted) return;
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder:
+                (context) => HomeScreen(
+                  onThemeToggle: widget.onThemeToggle,
+                  isDarkMode: widget.isDarkMode,
+                ),
+          ),
+        );
+      } else {
+        final responseBody = json.decode(response.body);
+        _showErrorSnackBar(
+          responseBody['error'] ?? 'Ocurrió un error desconocido.',
+        );
+      }
+    } catch (e) {
+      _showErrorSnackBar(
+        'Error de conexión. No se pudo contactar al servidor de autenticación.',
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -87,65 +157,55 @@ class _LoginFormState extends State<LoginForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // --- CAMPO EMAIL ---
+        // --- CAMPO USUARIO ---
         TextFormField(
-          controller: _emailController,
-          focusNode: _emailFocusNode,
-          keyboardType: TextInputType.emailAddress,
+          controller: _usernameController,
+          focusNode: _usernameFocusNode,
+          keyboardType: TextInputType.text,
           style: textTheme.bodyLarge,
+          readOnly: _codeSent,
           decoration: const InputDecoration(
-            labelText: 'Correo Electrónico',
-            prefixIcon: Icon(Icons.email_outlined),
+            labelText: 'Usuario',
+            prefixIcon: Icon(Icons.person_outline),
           ),
           onFieldSubmitted: (_) {
-            _passwordFocusNode.requestFocus();
+            if (!_codeSent) {
+              _sendCode();
+            } else {
+              _otpFocusNode.requestFocus();
+            }
           },
         ),
         const SizedBox(height: 20),
-        // --- CAMPO PASSWORD ---
-        TextFormField(
-          controller: _passwordController,
-          focusNode: _passwordFocusNode,
-          obscureText: !_isPasswordVisible,
-          style: textTheme.bodyLarge,
-          decoration: InputDecoration(
-            labelText: 'Contraseña',
-            prefixIcon: const Icon(Icons.lock_outline),
-            suffixIcon: IconButton(
-              icon: Icon(
-                _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-              ),
-              onPressed: () {
-                setState(() {
-                  _isPasswordVisible = !_isPasswordVisible;
-                });
-              },
+        // --- CAMPO OTP ---
+        if (_codeSent)
+          TextFormField(
+            controller: _otpController,
+            focusNode: _otpFocusNode,
+            keyboardType: TextInputType.number,
+            style: textTheme.bodyLarge,
+            decoration: const InputDecoration(
+              labelText: 'Código de Acceso',
+              prefixIcon: Icon(Icons.password_rounded),
             ),
+            onFieldSubmitted: (_) => _login(),
           ),
-          onFieldSubmitted: (_) => _login(),
-          onEditingComplete: () {
-            // This is called when the user presses the "next" button on the keyboard
-            // or tabs away from the field. We want to move focus to the login button.
-            _loginButtonFocusNode.requestFocus();
-          },
-        ),
-        const SizedBox(height: 10),
-        // --- OLVIDÉ CONTRASEÑA ---
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(
-            onPressed: () {
-              // TODO: Implement forgot password logic
-            },
-            child: const Text('¿Olvidaste tu contraseña?'),
-          ),
-        ),
+        if (_codeSent) const SizedBox(height: 20),
         const SizedBox(height: 20),
         // --- BOTÓN LOGIN ---
         ElevatedButton(
-          focusNode: _loginButtonFocusNode,
-          onPressed: _login,
-          child: const Text('Iniciar Sesión'),
+          onPressed: _isLoading ? null : (_codeSent ? _login : _sendCode),
+          child:
+              _isLoading
+                  ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                  : Text(_codeSent ? 'Iniciar Sesión' : 'Enviar Código'),
         ),
       ],
     );
