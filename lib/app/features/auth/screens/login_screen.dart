@@ -35,53 +35,64 @@ class LoginScreen extends StatelessWidget {
       body: LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(
+            // Usamos reverse: true para que al abrir el teclado, el scroll se ajuste desde abajo
+            reverse: true,
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: IntrinsicHeight(
-                child: SafeArea(
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 60),
-                            Text(
-                              'PetroBox',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 32,
-                                fontWeight: FontWeight.bold,
-                                color: theme.textTheme.headlineLarge?.color,
-                              ),
-                            ),
-                            const SizedBox(height: 30),
-                            AppLogo(height: 100, isDarkMode: isDarkMode),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Container(
-                        width: double.infinity,
-                        constraints: const BoxConstraints(maxWidth: 500),
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                        child: Card(
-                          elevation: 8,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(24.0),
-                            child: LoginForm(
-                              onThemeToggle: onThemeToggle,
-                              isDarkMode: isDarkMode,
-                            ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // --- ZONA SUPERIOR (Logo y Título) ---
+                  Padding(
+                    padding: const EdgeInsets.only(top: 60, bottom: 40),
+                    child: Column(
+                      children: [
+                        AppLogo(height: 80, isDarkMode: isDarkMode),
+                        const SizedBox(height: 24),
+                        Text(
+                          '¡Hola,\nBienvenido!',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 36,
+                            height: 1.2,
+                            fontWeight: FontWeight.w300, // Light font
+                            color: theme.textTheme.headlineLarge?.color,
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
+
+                  // --- BOTTOM SHEET (Formulario) ---
+                  Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(
+                      maxWidth: 600,
+                    ), // Límite para tablets/PC
+                    decoration: BoxDecoration(
+                      color: theme.cardColor,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(40),
+                        topRight: Radius.circular(40),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 20,
+                          offset: const Offset(0, -5),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.fromLTRB(32, 40, 32, 32),
+                    child: SafeArea(
+                      top: false,
+                      child: LoginForm(
+                        onThemeToggle: onThemeToggle,
+                        isDarkMode: isDarkMode,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           );

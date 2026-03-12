@@ -26,6 +26,7 @@ class _LoginFormState extends State<LoginForm> {
 
   bool _codeSent = false;
   bool _isLoading = false;
+  String? _successfulAuthUrl; // Guardamos el servidor que envió el OTP
 
   @override
   void dispose() {
@@ -62,38 +63,48 @@ class _LoginFormState extends State<LoginForm> {
     setState(() => _isLoading = true);
     _usernameFocusNode.unfocus();
 
-    try {
-      // Asumimos que el primer servidor de la lista es el de autenticación.
-      // En una app real, esta URL debería ser una constante de configuración.
-      final authServerUrl = ServerManager.apiEndpoints.first.replaceAll(
-        '/usuarios',
-        '',
-      );
-      final url = Uri.parse('$authServerUrl/auth/request-otp');
+    bool success = false;
+    String lastErrorMessage = 'No se pudo conectar con ningún servidor.';
 
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'username': _usernameController.text.trim()}),
-      );
+    // Iterar por todos los servidores disponibles hasta que uno responda
+    for (final endpoint in ServerManager.apiEndpoints) {
+      try {
+        final authServerUrl = endpoint.replaceAll('/usuarios', '');
+        final url = Uri.parse('$authServerUrl/auth/request-otp');
 
-      final responseBody = json.decode(response.body);
+        final response = await http
+            .post(
+              url,
+              headers: {'Content-Type': 'application/json'},
+              body: json.encode({'username': _usernameController.text.trim()}),
+            )
+            .timeout(
+              const Duration(seconds: 5),
+            ); // Timeout corto para probar el siguiente rápido
 
-      if (response.statusCode == 200) {
-        setState(() => _codeSent = true);
-        _otpFocusNode.requestFocus();
-      } else {
-        _showErrorSnackBar(
-          responseBody['error'] ?? 'Ocurrió un error desconocido.',
-        );
+        if (response.statusCode == 200) {
+          // ÉXITO: Guardamos este servidor para usarlo en el login
+          _successfulAuthUrl = authServerUrl;
+          success = true;
+
+          setState(() => _codeSent = true);
+          _otpFocusNode.requestFocus();
+          break; // Dejamos de buscar
+        } else {
+          final responseBody = json.decode(response.body);
+          lastErrorMessage = responseBody['error'] ?? 'Error del servidor';
+        }
+      } catch (e) {
+        // Si falla este servidor, el bucle continúa con el siguiente
+        debugPrint('Fallo conexión auth con $endpoint: $e');
       }
-    } catch (e) {
-      _showErrorSnackBar(
-        'Error de conexión. No se pudo contactar al servidor de autenticación.',
-      );
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
+
+    if (!success) {
+      _showErrorSnackBar('Error: $lastErrorMessage');
+    }
+
+    if (mounted) setState(() => _isLoading = false);
   }
 
   Future<void> _login() async {
@@ -102,15 +113,17 @@ class _LoginFormState extends State<LoginForm> {
       return;
     }
 
+    if (_successfulAuthUrl == null) {
+      _showErrorSnackBar('Error de sesión: Servidor no identificado.');
+      return;
+    }
+
     setState(() => _isLoading = true);
     _otpFocusNode.unfocus();
 
     try {
-      final authServerUrl = ServerManager.apiEndpoints.first.replaceAll(
-        '/usuarios',
-        '',
-      );
-      final url = Uri.parse('$authServerUrl/auth/login');
+      // Usamos EL MISMO servidor que envió el código (Sticky Session)
+      final url = Uri.parse('$_successfulAuthUrl/auth/login');
 
       final response = await http.post(
         url,
@@ -153,6 +166,20 @@ class _LoginFormState extends State<LoginForm> {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final primaryColor = Theme.of(context).primaryColor;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Estilo base para inputs tipo "Underline"
+    final underlineBorder = UnderlineInputBorder(
+      borderSide: BorderSide(
+        color: isDark ? Colors.white24 : Colors.black12,
+        width: 1.5,
+      ),
+    );
+
+    final underlineFocusedBorder = UnderlineInputBorder(
+      borderSide: BorderSide(color: primaryColor, width: 2),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -162,39 +189,99 @@ class _LoginFormState extends State<LoginForm> {
           controller: _usernameController,
           focusNode: _usernameFocusNode,
           keyboardType: TextInputType.text,
-          style: textTheme.bodyLarge,
-          readOnly: _codeSent,
-          decoration: const InputDecoration(
-            labelText: 'Usuario',
-            prefixIcon: Icon(Icons.person_outline),
+          // Estilo de texto un poco más grande
+          style: textTheme.bodyLarge?.copyWith(fontSize: 16),
+          // Bloquear si ya se envió el código (Paso 2)
+          enabled: !_codeSent,
+          decoration: InputDecoration(
+            labelText: 'USUARIO',
+            labelStyle: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.0,
+              color: primaryColor,
+            ),
+            hintText: 'ej. nombre.apellido',
+            floatingLabelBehavior: FloatingLabelBehavior.always,
+            contentPadding: const EdgeInsets.symmetric(vertical: 16),
+
+            // Override de bordes para usar línea inferior
+            border: underlineBorder,
+            enabledBorder: underlineBorder,
+            focusedBorder: underlineFocusedBorder,
+            filled: false, // Sin fondo gris
+
+            prefixIcon: const Icon(Icons.person_outline),
+
+            // Check verde animado
+            suffixIcon:
+                _codeSent
+                    ? const Icon(Icons.check_circle, color: Colors.green)
+                    : null,
           ),
           onFieldSubmitted: (_) {
             if (!_codeSent) {
               _sendCode();
-            } else {
-              _otpFocusNode.requestFocus();
             }
           },
         ),
-        const SizedBox(height: 20),
-        // --- CAMPO OTP ---
-        if (_codeSent)
-          TextFormField(
-            controller: _otpController,
-            focusNode: _otpFocusNode,
-            keyboardType: TextInputType.number,
-            style: textTheme.bodyLarge,
-            decoration: const InputDecoration(
-              labelText: 'Código de Acceso',
-              prefixIcon: Icon(Icons.password_rounded),
+
+        // --- CAMPO OTP (Animado) ---
+        AnimatedSize(
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOutBack, // Rebote suave al final
+          child: Container(
+            height: _codeSent ? null : 0, // Altura 0 si no se ha enviado
+            margin: EdgeInsets.only(top: _codeSent ? 24 : 0),
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 300),
+              opacity: _codeSent ? 1.0 : 0.0,
+              child: TextFormField(
+                controller: _otpController,
+                focusNode: _otpFocusNode,
+                keyboardType: TextInputType.number,
+                style: textTheme.bodyLarge?.copyWith(
+                  fontSize: 16,
+                  letterSpacing: 4,
+                ), // Espaciado para código
+                decoration: InputDecoration(
+                  labelText: 'CÓDIGO DE ACCESO',
+                  labelStyle: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.0,
+                    color: primaryColor,
+                  ),
+                  hintText: '******',
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 16),
+
+                  border: underlineBorder,
+                  enabledBorder: underlineBorder,
+                  focusedBorder: underlineFocusedBorder,
+                  filled: false,
+
+                  prefixIcon: const Icon(Icons.lock_outline_rounded),
+                ),
+                onFieldSubmitted: (_) => _login(),
+              ),
             ),
-            onFieldSubmitted: (_) => _login(),
           ),
-        if (_codeSent) const SizedBox(height: 20),
-        const SizedBox(height: 20),
+        ),
+
+        const SizedBox(height: 40),
+
         // --- BOTÓN LOGIN ---
         ElevatedButton(
           onPressed: _isLoading ? null : (_codeSent ? _login : _sendCode),
+          style: ElevatedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(30),
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            elevation: 8,
+            shadowColor: primaryColor.withOpacity(0.4),
+          ),
           child:
               _isLoading
                   ? const SizedBox(
