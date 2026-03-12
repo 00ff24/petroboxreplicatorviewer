@@ -2311,7 +2311,7 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 6,
-                                        horizontal: 10,
+                                        horizontal: 16,
                                       ),
                                       decoration: BoxDecoration(
                                         color: AppTheme.errorRed.withOpacity(
@@ -2354,28 +2354,30 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                                               'server_node' ||
                                           selectedUser!['tipo_instalacion'] ==
                                               'server')
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 6,
-                                            vertical: 3,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: AppTheme.primaryBlue
-                                                .withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(
-                                              6,
+                                        Expanded(
+                                          child: Container(
+                                            alignment: Alignment.center,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 2,
+                                              vertical: 3,
                                             ),
-                                            border: Border.all(
+                                            decoration: BoxDecoration(
                                               color: AppTheme.primaryBlue
-                                                  .withOpacity(0.3),
+                                                  .withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              border: Border.all(
+                                                color: AppTheme.primaryBlue
+                                                    .withOpacity(0.3),
+                                              ),
                                             ),
-                                          ),
-                                          child: const Text(
-                                            'SERVER',
-                                            style: TextStyle(
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.bold,
-                                              color: AppTheme.primaryBlue,
+                                            child: const Text(
+                                              'SERVER',
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                                color: AppTheme.primaryBlue,
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -2386,28 +2388,30 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                                               'server_node' ||
                                           selectedUser!['tipo_instalacion'] ==
                                               'node')
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 6,
-                                            vertical: 3,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: AppTheme.successGreen
-                                                .withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(
-                                              6,
+                                        Expanded(
+                                          child: Container(
+                                            alignment: Alignment.center,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 2,
+                                              vertical: 3,
                                             ),
-                                            border: Border.all(
+                                            decoration: BoxDecoration(
                                               color: AppTheme.successGreen
-                                                  .withOpacity(0.3),
+                                                  .withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              border: Border.all(
+                                                color: AppTheme.successGreen
+                                                    .withOpacity(0.3),
+                                              ),
                                             ),
-                                          ),
-                                          child: const Text(
-                                            'NODE',
-                                            style: TextStyle(
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.bold,
-                                              color: AppTheme.successGreen,
+                                            child: const Text(
+                                              'NODE',
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                                color: AppTheme.successGreen,
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -2435,7 +2439,11 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                                       )
                                       : null,
                               child: Container(
-                                padding: const EdgeInsets.all(16),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal:
+                                      24, // Igualamos a 24 para alinear con Header
+                                  vertical: 16,
+                                ),
                                 color: Theme.of(
                                   context,
                                 ).scaffoldBackgroundColor.withOpacity(0.5),
@@ -2472,43 +2480,47 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                                       ),
                                     ),
                                     const Spacer(),
-                                    // ... Badge de destinos e icono de expansión
+                                    // ... Badge de destinos (Estilo igual al botón Reiniciar)
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 4,
+                                        vertical: 6,
+                                        horizontal: 16,
                                       ),
                                       decoration: BoxDecoration(
                                         color: Theme.of(
                                           context,
                                         ).dividerColor.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(20),
+                                        borderRadius: BorderRadius.circular(8),
                                         border: Border.all(
                                           color: Theme.of(context).dividerColor,
                                         ),
                                       ),
-                                      child: Text(
-                                        '${(selectedUser!['archivos']['output'] as Map).length} destinos',
-                                        style: TextStyle(
-                                          color:
-                                              Theme.of(
-                                                context,
-                                              ).textTheme.bodyMedium?.color,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                        ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.folder_open_rounded,
+                                            size: 14,
+                                            color:
+                                                Theme.of(
+                                                  context,
+                                                ).textTheme.bodyMedium?.color,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '${(selectedUser!['archivos']['output'] as Map).length} destinos',
+                                            style: TextStyle(
+                                              color:
+                                                  Theme.of(
+                                                    context,
+                                                  ).textTheme.bodyMedium?.color,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 10,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                    if (_detailedUser != null)
-                                      Icon(
-                                        _isUserDetailExpanded
-                                            ? Icons.keyboard_arrow_up_rounded
-                                            : Icons.keyboard_arrow_down_rounded,
-                                        color:
-                                            Theme.of(
-                                              context,
-                                            ).textTheme.bodyMedium?.color,
-                                      ),
                                   ],
                                 ),
                               ),
@@ -2757,7 +2769,12 @@ class _UserDetailContentState extends State<UserDetailContent> {
 
     return Container(
       color: Theme.of(context).cardColor,
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+      padding: const EdgeInsets.fromLTRB(
+        24,
+        20,
+        24,
+        0,
+      ), // Ajustado a 24 para alineación vertical
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
 
@@ -2782,16 +2799,38 @@ class _UserDetailContentState extends State<UserDetailContent> {
                   letterSpacing: 1.0,
                 ),
               ),
-
-              IconButton(
-                onPressed: refreshData,
-
-                icon: Icon(
-                  Icons.refresh_rounded,
-
-                  color: Theme.of(context).textTheme.bodyMedium?.color,
-
-                  size: 18,
+              InkWell(
+                onTap: refreshData,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 6,
+                    horizontal: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).dividerColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Theme.of(context).dividerColor),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.refresh_rounded,
+                        size: 14,
+                        color: Theme.of(context).textTheme.bodyMedium?.color,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'RECARGAR',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).textTheme.bodyMedium?.color,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -2847,7 +2886,7 @@ class _UserDetailContentState extends State<UserDetailContent> {
                   });
                 },
                 child: Text(
-                  'Colas de Salida / output (${outputs.length})',
+                  'Colas de Salida / Output (${outputs.length})',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
@@ -2856,18 +2895,44 @@ class _UserDetailContentState extends State<UserDetailContent> {
                   ),
                 ),
               ),
-              IconButton(
-                onPressed: () {
+              InkWell(
+                onTap: () {
                   setState(() {
                     _isOutputExpanded = !_isOutputExpanded;
                   });
                 },
-                icon: Icon(
-                  _isOutputExpanded
-                      ? Icons.keyboard_arrow_up_rounded
-                      : Icons.keyboard_arrow_down_rounded,
-                  color: Theme.of(context).textTheme.bodyMedium?.color,
-                  size: 18,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 6,
+                    horizontal: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).dividerColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Theme.of(context).dividerColor),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _isOutputExpanded
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        size: 14,
+                        color: Theme.of(context).textTheme.bodyMedium?.color,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _isOutputExpanded ? 'VER MENOS' : 'VER MÁS',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).textTheme.bodyMedium?.color,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -2969,7 +3034,7 @@ class _UserDetailContentState extends State<UserDetailContent> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'CONSOLA / LOGS',
+                'Consola / Logs',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
@@ -2980,25 +3045,49 @@ class _UserDetailContentState extends State<UserDetailContent> {
               Row(
                 children: [
                   if (userLogs.isNotEmpty)
-                    TextButton.icon(
+                    IconButton(
                       onPressed: copyLogsToClipboard,
-                      icon: const Icon(Icons.copy_all_rounded, size: 14),
-                      label: const Text(
-                        'Copiar',
-                        style: TextStyle(fontSize: 12),
+                      icon: const Icon(Icons.copy_all_rounded, size: 20),
+                      color: AppTheme.primaryBlue,
+                      tooltip: 'Copiar Logs',
+                    ),
+                  InkWell(
+                    onTap: fetchUserLogs,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 6,
+                        horizontal: 16,
                       ),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppTheme.primaryBlue,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).dividerColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Theme.of(context).dividerColor,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.refresh_rounded,
+                            size: 14,
+                            color:
+                                Theme.of(context).textTheme.bodyMedium?.color,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'RECARGAR',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color:
+                                  Theme.of(context).textTheme.bodyMedium?.color,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  IconButton(
-                    onPressed: fetchUserLogs,
-                    icon: Icon(
-                      Icons.refresh_rounded,
-                      color: Theme.of(context).textTheme.bodyMedium?.color,
-                      size: 18,
-                    ),
-                    tooltip: 'Refrescar Logs',
                   ),
                 ],
               ),

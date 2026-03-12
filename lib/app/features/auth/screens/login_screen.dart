@@ -32,32 +32,60 @@ class LoginScreen extends StatelessWidget {
           const SizedBox(width: 16),
         ],
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(32.0),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                AppLogo(height: 150, isDarkMode: isDarkMode),
-                const SizedBox(height: 40),
-                Text(
-                  'Bienvenido',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: theme.textTheme.headlineLarge?.color,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: SafeArea(
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 60),
+                            Text(
+                              'PetroBox',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                                color: theme.textTheme.headlineLarge?.color,
+                              ),
+                            ),
+                            const SizedBox(height: 30),
+                            AppLogo(height: 100, isDarkMode: isDarkMode),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Container(
+                        width: double.infinity,
+                        constraints: const BoxConstraints(maxWidth: 500),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        child: Card(
+                          elevation: 8,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: LoginForm(
+                              onThemeToggle: onThemeToggle,
+                              isDarkMode: isDarkMode,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 30),
-                LoginForm(onThemeToggle: onThemeToggle, isDarkMode: isDarkMode),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
