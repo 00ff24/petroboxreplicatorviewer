@@ -1674,6 +1674,12 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
 
   bool isLoading = true;
 
+  // Controlador para poder limpiar el texto desde el icono X si fuera necesario
+  TextEditingController? _searchController;
+
+  // Key para controlar el widget hijo UserDetailContent desde aquí (el padre)
+  final GlobalKey<UserDetailContentState> _userDetailKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -1750,6 +1756,24 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
         setState(() => selectedUser!['archivos']['status'] = 'error');
       }
     }
+  }
+
+  // Lógica unificada: Seleccionar + Cargar + Mostrar
+  void _onUserSelected(Map<String, dynamic> selection) {
+    setState(() {
+      selectedUser = selection;
+      _detailedUser = selection; // Mostrar detalles inmediatamente
+      _isUserDetailExpanded = true; // Expandir panel automáticamente
+      FocusScope.of(context).unfocus(); // Ocultar teclado
+    });
+
+    // Actualizar texto del buscador si tenemos el controlador
+    if (_searchController != null &&
+        _searchController!.text != selection['usuario']) {
+      _searchController!.text = selection['usuario'];
+    }
+
+    refreshUserFiles(selection['usuario']);
   }
 
   Future<void> handleRestartService(Map<String, dynamic> user) async {
@@ -1860,709 +1884,590 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-
-        elevation: 0,
-
-        iconTheme: IconThemeData(color: Theme.of(context).iconTheme.color),
-
-        title: Text(
-          widget.server.name,
-
-          style: TextStyle(
-            color: Theme.of(context).textTheme.titleLarge?.color, // Dynamic
-
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-
-      body: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1000),
-
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-
-              children: [
-                // BUSCADOR DE USUARIO
-                Container(
-                  padding: const EdgeInsets.all(20),
-
-                  decoration: AppTheme.cardDecoration(context),
-
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-
+      body: SafeArea(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1000),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          return Autocomplete<Map<String, dynamic>>(
-                            optionsBuilder: (
-                              TextEditingValue textEditingValue,
-                            ) {
-                              if (textEditingValue.text == '') {
-                                return const Iterable<
-                                  Map<String, dynamic>
-                                >.empty();
-                              }
-
-                              return users.where((dynamic option) {
-                                return option['usuario']
-                                    .toString()
-                                    .toLowerCase()
-                                    .contains(
-                                      textEditingValue.text.toLowerCase(),
-                                    );
-                              }).cast<Map<String, dynamic>>();
-                            },
-
-                            displayStringForOption:
-                                (Map<String, dynamic> option) =>
-                                    option['usuario'],
-
-                            onSelected: (Map<String, dynamic> selection) {
-                              setState(() {
-                                selectedUser =
-                                    selection; // Actualiza el usuario de la búsqueda
-                                _detailedUser =
-                                    null; // Resetea la vista de detalles
-                                _isUserDetailExpanded = false;
-                                FocusScope.of(
-                                  context,
-                                ).unfocus(); // Ocultar teclado
-                              });
-
-                              refreshUserFiles(selection['usuario']);
-                            },
-
-                            fieldViewBuilder: (
-                              context,
-
-                              textEditingController,
-
-                              focusNode,
-
-                              onFieldSubmitted,
-                            ) {
-                              return TextField(
-                                autofocus: true,
-
-                                controller: textEditingController,
-
-                                focusNode:
-                                    focusNode, // Usar el nodo del Autocomplete para que funcione la lista
-
-                                onTap: () {
-                                  textEditingController.clear();
-
-                                  setState(() {
-                                    selectedUser = null;
-                                    _detailedUser = null;
-                                    _isUserDetailExpanded = false;
-                                  });
-                                },
-
-                                onChanged: (value) {
-                                  if (value.isEmpty) {
-                                    setState(() => selectedUser = null);
-                                    _detailedUser = null;
-                                    _isUserDetailExpanded = false;
-                                  }
-                                },
-
-                                style: TextStyle(
-                                  color:
-                                      Theme.of(
-                                        context,
-                                      ).textTheme.bodyLarge?.color,
-                                ),
-
-                                decoration: InputDecoration(
-                                  hintText:
-                                      isLoading
-                                          ? 'Cargando usuarios...'
-                                          : 'Nombre de usuario...',
-
-                                  hintStyle: TextStyle(
-                                    color:
-                                        Theme.of(
-                                          context,
-                                        ).textTheme.bodyMedium?.color,
-                                  ),
-
-                                  prefixIcon: Icon(
-                                    Icons.search_rounded,
-
-                                    color:
-                                        Theme.of(
-                                          context,
-                                        ).textTheme.bodyMedium?.color,
-                                  ),
-
-                                  filled: true,
-
-                                  fillColor:
-                                      Theme.of(context).scaffoldBackgroundColor,
-
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-
-                                    borderSide: BorderSide.none,
-                                  ),
-
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.primaryBlue,
-
-                                      width: 1,
-                                    ),
-                                  ),
-                                ),
-
-                                onSubmitted: (String value) {
-                                  if (value.isEmpty) return;
-
-                                  final normalizedValue = value.toLowerCase();
-
-                                  // Buscar coincidencias en la lista de usuarios
-
-                                  final matches =
-                                      users.where((user) {
-                                        return user['usuario']
-                                            .toString()
-                                            .toLowerCase()
-                                            .contains(normalizedValue);
-                                      }).toList();
-
-                                  if (matches.isNotEmpty) {
-                                    // Seleccionar el primer resultado (predicción)
-
-                                    final selection = matches.first;
-
-                                    setState(() {
-                                      selectedUser = selection;
-                                    });
-
-                                    FocusScope.of(
-                                      context,
-                                    ).unfocus(); // Ocultar teclado
-
-                                    textEditingController.text =
-                                        selection['usuario'];
-
-                                    refreshUserFiles(selection['usuario']);
-
-                                    // Si el texto ya coincidía exactamente, navegar a detalles
-
-                                    if (selection['usuario'].toString() ==
-                                        normalizedValue.toString()) {
-                                      setState(() {
-                                        _detailedUser = selection;
-                                        _isUserDetailExpanded = true;
-                                      });
-                                    }
-                                  }
-                                },
-                              );
-                            },
-
-                            optionsViewBuilder: (context, onSelected, options) {
-                              return Align(
-                                alignment: Alignment.topLeft,
-
-                                child: Material(
-                                  elevation: 4.0,
-
-                                  color: Theme.of(context).cardColor,
-
-                                  borderRadius: BorderRadius.circular(12),
-
-                                  child: ConstrainedBox(
-                                    constraints: BoxConstraints(
-                                      maxHeight: 200,
-                                      maxWidth:
-                                          constraints
-                                              .maxWidth, // Usamos el ancho del LayoutBuilder
-                                    ),
-
-                                    child: ListView.builder(
-                                      padding: EdgeInsets.zero,
-
-                                      shrinkWrap: true,
-
-                                      itemCount: options.length,
-
-                                      itemBuilder: (
-                                        BuildContext context,
-
-                                        int index,
-                                      ) {
-                                        final option = options.elementAt(index);
-
-                                        return ListTile(
-                                          title: Text(
-                                            option['usuario'],
-
-                                            style: TextStyle(
-                                              color:
-                                                  Theme.of(
-                                                    context,
-                                                  ).textTheme.bodyLarge?.color,
-                                            ),
-                                          ),
-
-                                          onTap: () {
-                                            onSelected(option);
-                                          },
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          );
-                        },
+                      Container(
+                        height: 48,
+                        width: 48,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).cardColor,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.arrow_back_rounded, size: 20),
+                          color: Theme.of(context).textTheme.bodyMedium?.color,
+                          padding: EdgeInsets.zero,
+                          tooltip: 'Volver',
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
                       ),
-
-                      const SizedBox(height: 12),
-
-                      SizedBox(
-                        width: double.infinity,
-
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryBlue,
-
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-
-                          onPressed:
-                              (selectedUser !=
-                                          null && // Hay un usuario seleccionado
-                                      _detailedUser ==
-                                          null && // Y aún no hemos mostrado sus detalles
-                                      (selectedUser!['archivos']['status'] ==
-                                              'ok' ||
-                                          selectedUser!['archivos']['status'] ==
-                                              'calculating'))
-                                  ? () => setState(() {
-                                    _detailedUser = selectedUser;
-                                    _isUserDetailExpanded = true;
-                                  })
-                                  : null, // Deshabilitado si ya se mostraron detalles o no hay usuario
-
-                          child:
-                              (selectedUser != null &&
-                                      selectedUser!['archivos']['status'] ==
-                                          'cargando')
-                                  ? Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-
-                                    children: [
-                                      const SizedBox(
-                                        width: 20,
-
-                                        height: 20,
-
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white,
-
-                                          strokeWidth: 2,
-                                        ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return Autocomplete<Map<String, dynamic>>(
+                              optionsBuilder: (
+                                TextEditingValue textEditingValue,
+                              ) {
+                                if (textEditingValue.text == '') {
+                                  return const Iterable<
+                                    Map<String, dynamic>
+                                  >.empty();
+                                }
+                                return users.where((dynamic option) {
+                                  return option['usuario']
+                                      .toString()
+                                      .toLowerCase()
+                                      .contains(
+                                        textEditingValue.text.toLowerCase(),
+                                      );
+                                }).cast<Map<String, dynamic>>();
+                              },
+                              displayStringForOption:
+                                  (Map<String, dynamic> option) =>
+                                      option['usuario'],
+                              onSelected: _onUserSelected,
+                              fieldViewBuilder: (
+                                context,
+                                textEditingController,
+                                focusNode,
+                                onFieldSubmitted,
+                              ) {
+                                _searchController = textEditingController;
+                                return TextField(
+                                  controller: textEditingController,
+                                  focusNode: focusNode,
+                                  autofocus: true,
+                                  style: TextStyle(
+                                    color:
+                                        Theme.of(
+                                          context,
+                                        ).textTheme.bodyLarge?.color,
+                                    fontSize: 14,
+                                  ),
+                                  decoration: InputDecoration(
+                                    hintText:
+                                        isLoading
+                                            ? 'Cargando usuarios...'
+                                            : 'Buscar en ${widget.server.name}...',
+                                    hintStyle: TextStyle(
+                                      color:
+                                          Theme.of(
+                                            context,
+                                          ).textTheme.bodyMedium?.color,
+                                      fontSize: 14,
+                                    ),
+                                    prefixIcon: Icon(
+                                      Icons.search_rounded,
+                                      size: 20,
+                                      color:
+                                          Theme.of(
+                                            context,
+                                          ).textTheme.bodyMedium?.color,
+                                    ),
+                                    suffixIcon:
+                                        textEditingController.text.isNotEmpty
+                                            ? IconButton(
+                                              icon: Icon(
+                                                Icons.close,
+                                                size: 18,
+                                                color:
+                                                    Theme.of(context)
+                                                        .textTheme
+                                                        .bodyMedium
+                                                        ?.color,
+                                              ),
+                                              onPressed: () {
+                                                textEditingController.clear();
+                                                setState(() {
+                                                  selectedUser = null;
+                                                  _detailedUser = null;
+                                                });
+                                              },
+                                            )
+                                            : null,
+                                    filled: true,
+                                    fillColor: Theme.of(context).cardColor,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      vertical: 0,
+                                      horizontal: 16,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: const BorderSide(
+                                        color: AppTheme.primaryBlue,
+                                        width: 1.5,
                                       ),
-
-                                      const SizedBox(width: 12),
-
-                                      const Text(
-                                        'Cargando Detalles...',
-
-                                        style: TextStyle(
-                                          color: Colors.white,
-
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  )
-                                  : const Text(
-                                    'Ver Detalles de Usuario',
-
-                                    style: TextStyle(
-                                      color: Colors.white,
-
-                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
+                                  onSubmitted: (String value) {
+                                    if (value.isEmpty) return;
+                                    final normalizedValue = value.toLowerCase();
+                                    final matches =
+                                        users.where((user) {
+                                          return user['usuario']
+                                              .toString()
+                                              .toLowerCase()
+                                              .contains(normalizedValue);
+                                        }).toList();
+                                    if (matches.isNotEmpty) {
+                                      _onUserSelected(matches.first);
+                                    }
+                                  },
+                                );
+                              },
+                              optionsViewBuilder: (
+                                context,
+                                onSelected,
+                                options,
+                              ) {
+                                return Align(
+                                  alignment: Alignment.topLeft,
+                                  child: Material(
+                                    elevation: 8.0,
+                                    color: Theme.of(context).cardColor,
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        maxHeight: 300,
+                                        maxWidth: constraints.maxWidth,
+                                      ),
+                                      child: ListView.separated(
+                                        padding: EdgeInsets.zero,
+                                        shrinkWrap: true,
+                                        itemCount: options.length,
+                                        separatorBuilder:
+                                            (context, index) => Divider(
+                                              height: 1,
+                                              color: Theme.of(
+                                                context,
+                                              ).dividerColor.withOpacity(0.1),
+                                            ),
+                                        itemBuilder: (
+                                          BuildContext context,
+                                          int index,
+                                        ) {
+                                          final option = options.elementAt(
+                                            index,
+                                          );
+                                          return ListTile(
+                                            dense: true,
+                                            leading: const Icon(
+                                              Icons.person_outline_rounded,
+                                              size: 18,
+                                            ),
+                                            title: Text(
+                                              option['usuario'],
+                                              style: TextStyle(
+                                                color:
+                                                    Theme.of(context)
+                                                        .textTheme
+                                                        .bodyLarge
+                                                        ?.color,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                            onTap: () => onSelected(option),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
                         ),
                       ),
                     ],
                   ),
-                ),
-
-                const SizedBox(height: 12),
-
-                if (selectedUser != null)
-                  Column(
-                    children: [
-                      // --- HEADER DEL USUARIO (MOVIDO AQUÍ) ---
-                      Container(
-                        padding: const EdgeInsets.all(24),
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Theme.of(context).cardColor,
-                              Theme.of(context).scaffoldBackgroundColor,
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                            color: Theme.of(context).dividerColor,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Theme.of(
-                                context,
-                              ).shadowColor.withOpacity(0.1),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
+                  const SizedBox(height: 24),
+                  if (selectedUser != null)
+                    Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Theme.of(context).cardColor,
+                                Theme.of(context).scaffoldBackgroundColor,
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
                             ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            // COLUMNA IZQUIERDA: Info Usuario
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    selectedUser!['usuario'],
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color:
-                                          Theme.of(
-                                            context,
-                                          ).textTheme.titleLarge?.color,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.dns_rounded,
-                                        size: 14,
-                                        color:
-                                            Theme.of(
-                                              context,
-                                            ).textTheme.bodyMedium?.color,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          'Alojado en ${widget.server.name}',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color:
-                                                Theme.of(
-                                                  context,
-                                                ).textTheme.bodyMedium?.color,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: Theme.of(context).dividerColor,
                             ),
-                            const SizedBox(width: 16),
-                            // COLUMNA DERECHA: Acciones y Tags
-                            IntrinsicWidth(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  InkWell(
-                                    onTap:
-                                        () =>
-                                            handleRestartService(selectedUser!),
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 6,
-                                        horizontal: 16,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.errorRed.withOpacity(
-                                          0.1,
-                                        ),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                          color: AppTheme.errorRed.withOpacity(
-                                            0.3,
-                                          ),
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          const Icon(
-                                            Icons.restart_alt_rounded,
-                                            size: 14,
-                                            color: AppTheme.errorRed,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          const Text(
-                                            'REINICIAR',
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                              color: AppTheme.errorRed,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      if (selectedUser!['tipo_instalacion'] ==
-                                              'server_node' ||
-                                          selectedUser!['tipo_instalacion'] ==
-                                              'server')
-                                        Expanded(
-                                          child: Container(
-                                            alignment: Alignment.center,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 2,
-                                              vertical: 3,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: AppTheme.primaryBlue
-                                                  .withOpacity(0.1),
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
-                                              border: Border.all(
-                                                color: AppTheme.primaryBlue
-                                                    .withOpacity(0.3),
-                                              ),
-                                            ),
-                                            child: const Text(
-                                              'SERVER',
-                                              style: TextStyle(
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.bold,
-                                                color: AppTheme.primaryBlue,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      if (selectedUser!['tipo_instalacion'] ==
-                                          'server_node')
-                                        const SizedBox(width: 6),
-                                      if (selectedUser!['tipo_instalacion'] ==
-                                              'server_node' ||
-                                          selectedUser!['tipo_instalacion'] ==
-                                              'node')
-                                        Expanded(
-                                          child: Container(
-                                            alignment: Alignment.center,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 2,
-                                              vertical: 3,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: AppTheme.successGreen
-                                                  .withOpacity(0.1),
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
-                                              border: Border.all(
-                                                color: AppTheme.successGreen
-                                                    .withOpacity(0.3),
-                                              ),
-                                            ),
-                                            child: const Text(
-                                              'NODE',
-                                              style: TextStyle(
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.bold,
-                                                color: AppTheme.successGreen,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      // --- SECCIÓN EXPANDIBLE DE DETALLES ---
-                      Container(
-                        decoration: AppTheme.cardDecoration(context),
-                        clipBehavior: Clip.antiAlias,
-                        child: Column(
-                          children: [
-                            InkWell(
-                              onTap:
-                                  _detailedUser != null
-                                      ? () => setState(
-                                        () =>
-                                            _isUserDetailExpanded =
-                                                !_isUserDetailExpanded,
-                                      )
-                                      : null,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal:
-                                      24, // Igualamos a 24 para alinear con Header
-                                  vertical: 16,
-                                ),
+                            boxShadow: [
+                              BoxShadow(
                                 color: Theme.of(
                                   context,
-                                ).scaffoldBackgroundColor.withOpacity(0.5),
-                                child: Row(
+                                ).shadowColor.withOpacity(0.1),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    // ... Icono y texto de "Cola de salida"
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: Theme.of(
-                                          context,
-                                        ).dividerColor.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Icon(
-                                        _detailedUser != null
-                                            ? Icons.analytics_rounded
-                                            : Icons.arrow_upward_rounded,
-                                        color: AppTheme.primaryBlue,
-                                        size: 16,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
                                     Text(
-                                      _detailedUser != null
-                                          ? 'Monitorización y Logs'
-                                          : 'Cola de salida',
+                                      selectedUser!['usuario'],
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
                                         color:
                                             Theme.of(
                                               context,
-                                            ).textTheme.bodyMedium?.color,
-                                        fontWeight: FontWeight.w500,
+                                            ).textTheme.titleLarge?.color,
                                       ),
                                     ),
-                                    const Spacer(),
-                                    // ... Badge de destinos (Estilo igual al botón Reiniciar)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 6,
-                                        horizontal: 16,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Theme.of(
-                                          context,
-                                        ).dividerColor.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                          color: Theme.of(context).dividerColor,
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.dns_rounded,
+                                          size: 14,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
                                         ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.folder_open_rounded,
-                                            size: 14,
-                                            color:
-                                                Theme.of(
-                                                  context,
-                                                ).textTheme.bodyMedium?.color,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            '${(selectedUser!['archivos']['output'] as Map).length} destinos',
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            'Alojado en ${widget.server.name}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                             style: TextStyle(
+                                              fontSize: 12,
                                               color:
                                                   Theme.of(
                                                     context,
                                                   ).textTheme.bodyMedium?.color,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 10,
                                             ),
                                           ),
-                                        ],
-                                      ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
                               ),
-                            ),
-                            AnimatedSize(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.fastOutSlowIn,
-                              child: Visibility(
-                                visible:
-                                    _isUserDetailExpanded &&
-                                    _detailedUser != null,
-                                maintainState: true, // <-- ¡Esta es la clave!
-                                child:
-                                    _detailedUser != null
-                                        ? UserDetailContent(
-                                          key: ValueKey(
-                                            _detailedUser!['usuario'],
+                              const SizedBox(width: 16),
+                              IntrinsicWidth(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    InkWell(
+                                      onTap:
+                                          () => handleRestartService(
+                                            selectedUser!,
                                           ),
-                                          username: _detailedUser!['usuario'],
-                                          serverName: widget.server.name,
-                                          apiUrl: widget.server.apiUrl,
-                                          userData: _detailedUser!,
-                                        )
-                                        : const SizedBox.shrink(),
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 6,
+                                          horizontal: 16,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.errorRed.withOpacity(
+                                            0.1,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          border: Border.all(
+                                            color: AppTheme.errorRed
+                                                .withOpacity(0.3),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(
+                                              Icons.restart_alt_rounded,
+                                              size: 14,
+                                              color: AppTheme.errorRed,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            const Text(
+                                              'REINICIAR',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                                color: AppTheme.errorRed,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        if (selectedUser!['tipo_instalacion'] ==
+                                                'server_node' ||
+                                            selectedUser!['tipo_instalacion'] ==
+                                                'server')
+                                          Expanded(
+                                            child: Container(
+                                              alignment: Alignment.center,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 2,
+                                                    vertical: 3,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: AppTheme.primaryBlue
+                                                    .withOpacity(0.1),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: AppTheme.primaryBlue
+                                                      .withOpacity(0.3),
+                                                ),
+                                              ),
+                                              child: const Text(
+                                                'SERVER',
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: AppTheme.primaryBlue,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        if (selectedUser!['tipo_instalacion'] ==
+                                            'server_node')
+                                          const SizedBox(width: 6),
+                                        if (selectedUser!['tipo_instalacion'] ==
+                                                'server_node' ||
+                                            selectedUser!['tipo_instalacion'] ==
+                                                'node')
+                                          Expanded(
+                                            child: Container(
+                                              alignment: Alignment.center,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 2,
+                                                    vertical: 3,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: AppTheme.successGreen
+                                                    .withOpacity(0.1),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: AppTheme.successGreen
+                                                      .withOpacity(0.3),
+                                                ),
+                                              ),
+                                              child: const Text(
+                                                'NODE',
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: AppTheme.successGreen,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
+                        ),
+                        Container(
+                          decoration: AppTheme.cardDecoration(context),
+                          clipBehavior: Clip.antiAlias,
+                          child: Column(
+                            children: [
+                              InkWell(
+                                onTap:
+                                    _detailedUser != null
+                                        ? () => setState(
+                                          () =>
+                                              _isUserDetailExpanded =
+                                                  !_isUserDetailExpanded,
+                                        )
+                                        : null,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 16,
+                                  ),
+                                  color: Theme.of(
+                                    context,
+                                  ).scaffoldBackgroundColor.withOpacity(0.5),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(
+                                            context,
+                                          ).dividerColor.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          _detailedUser != null
+                                              ? Icons.analytics_rounded
+                                              : Icons.arrow_upward_rounded,
+                                          color: AppTheme.primaryBlue,
+                                          size: 16,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        _detailedUser != null
+                                            ? 'Monitorización y Logs'
+                                            : 'Cola de salida',
+                                        style: TextStyle(
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      if (_detailedUser != null)
+                                        InkWell(
+                                          onTap: () {
+                                            _userDetailKey.currentState
+                                                ?.refreshData();
+                                          },
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 6,
+                                              horizontal: 16,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(
+                                                context,
+                                              ).dividerColor.withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              border: Border.all(
+                                                color:
+                                                    Theme.of(
+                                                      context,
+                                                    ).dividerColor,
+                                              ),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.refresh_rounded,
+                                                  size: 14,
+                                                  color:
+                                                      Theme.of(context)
+                                                          .textTheme
+                                                          .bodyMedium
+                                                          ?.color,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  'RECARGAR',
+                                                  style: TextStyle(
+                                                    color:
+                                                        Theme.of(context)
+                                                            .textTheme
+                                                            .bodyMedium
+                                                            ?.color,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 10,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              AnimatedSize(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.fastOutSlowIn,
+                                child: Visibility(
+                                  visible:
+                                      _isUserDetailExpanded &&
+                                      _detailedUser != null,
+                                  maintainState: true,
+                                  child:
+                                      _detailedUser != null
+                                          ? UserDetailContent(
+                                            key: _userDetailKey,
+                                            username: _detailedUser!['usuario'],
+                                            serverName: widget.server.name,
+                                            apiUrl: widget.server.apiUrl,
+                                            userData: _detailedUser!,
+                                          )
+                                          : const SizedBox.shrink(),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 40),
+                        child: Text(
+                          'Busque un usuario en la barra superior para comenzar.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color?.withOpacity(0.5),
+                            fontStyle: FontStyle.italic,
+                          ),
                         ),
                       ),
-                    ],
-                  )
-                else
-                  Text(
-                    'Seleccione un usuario para ver la información.',
-
-                    style: TextStyle(
-                      color: Theme.of(context).textTheme.bodyMedium?.color,
                     ),
-                  ),
-
-                const SizedBox(height: 24),
-              ],
+                  const SizedBox(height: 24),
+                ],
+              ),
             ),
           ),
         ),
@@ -2599,10 +2504,10 @@ class UserDetailContent extends StatefulWidget {
   });
 
   @override
-  State<UserDetailContent> createState() => _UserDetailContentState();
+  State<UserDetailContent> createState() => UserDetailContentState();
 }
 
-class _UserDetailContentState extends State<UserDetailContent> {
+class UserDetailContentState extends State<UserDetailContent> {
   late Map<String, dynamic> currentUserData;
 
   Timer? pollingTimer;
@@ -2617,25 +2522,52 @@ class _UserDetailContentState extends State<UserDetailContent> {
   @override
   void initState() {
     super.initState();
-
     currentUserData = Map<String, dynamic>.from(widget.userData);
+    _checkAndStartPolling();
+    // Cargar los logs al iniciar la pantalla
+    fetchUserLogs();
+  }
 
-    // Verificar si hay elementos pendientes (-1) o si el estado es 'calculating'
+  @override
+  void didUpdateWidget(UserDetailContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
 
+    // Si el usuario cambia, reiniciamos el estado (necesario por usar GlobalKey)
+    if (widget.username != oldWidget.username) {
+      setState(() {
+        currentUserData = Map<String, dynamic>.from(widget.userData);
+        userLogs = [];
+        loadingLogs = true;
+      });
+      fetchUserLogs();
+      _checkAndStartPolling();
+      return;
+    }
+
+    // Si recibimos nuevos datos del padre (ej: post-carga inicial), actualizamos la copia local y verificamos si hay que sondear
+    if (widget.userData['archivos'] != currentUserData['archivos']) {
+      setState(() {
+        currentUserData = Map<String, dynamic>.from(widget.userData);
+      });
+      _checkAndStartPolling();
+    }
+  }
+
+  void _checkAndStartPolling() {
     bool hasPending = false;
-
-    if (currentUserData['archivos']['output'] is Map) {
+    if (currentUserData['archivos'] is Map &&
+        currentUserData['archivos']['output'] is Map) {
       final outputs = currentUserData['archivos']['output'] as Map;
-
       hasPending = outputs.values.any((val) => val.toString() == '-1');
     }
 
-    if (currentUserData['archivos']['status'] == 'calculating' || hasPending) {
-      startPolling();
+    if ((currentUserData['archivos'] is Map &&
+            currentUserData['archivos']['status'] == 'calculating') ||
+        hasPending) {
+      if (pollingTimer == null || !pollingTimer!.isActive) {
+        startPolling();
+      }
     }
-
-    // Cargar los logs al iniciar la pantalla
-    fetchUserLogs();
   }
 
   @override
@@ -2682,6 +2614,7 @@ class _UserDetailContentState extends State<UserDetailContent> {
   // Método para refrescar manualmente dentro de la pantalla
 
   Future<void> refreshData() async {
+    fetchUserLogs(); // También recargamos los logs
     // Reinicia el conteo en el servidor (POST)
 
     try {
@@ -2745,9 +2678,16 @@ class _UserDetailContentState extends State<UserDetailContent> {
     if (userLogs.isEmpty) return;
     Clipboard.setData(ClipboardData(text: userLogs.join('\n')));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Logs copiados al portapapeles'),
-        duration: Duration(seconds: 2),
+      SnackBar(
+        content: const Text(
+          'Logs copiados al portapapeles',
+          textAlign: TextAlign.center,
+        ),
+        behavior: SnackBarBehavior.floating,
+        width: 260,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(50)),
+        backgroundColor: Theme.of(context).colorScheme.inverseSurface,
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -2767,77 +2707,23 @@ class _UserDetailContentState extends State<UserDetailContent> {
 
     final List<String> sortedKeys = outputs.keys.toList()..sort();
 
+    // Calcular suma total de paquetes de salida
+    int totalOutputPackages = 0;
+    for (var val in outputs.values) {
+      // Convertir a int, ignorando -1 (calculando) o errores
+      int v = int.tryParse(val.toString()) ?? 0;
+      if (v > 0) totalOutputPackages += v;
+    }
+
     return Container(
       color: Theme.of(context).cardColor,
-      padding: const EdgeInsets.fromLTRB(
-        24,
-        20,
-        24,
-        0,
-      ), // Ajustado a 24 para alineación vertical
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
 
         children: [
           // TARJETAS DE PAQUETES
-
-          // Input
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-            children: [
-              Text(
-                'Cola de entrada / input',
-
-                style: TextStyle(
-                  fontSize: 14,
-
-                  fontWeight: FontWeight.bold,
-
-                  color: Theme.of(context).textTheme.bodyMedium?.color,
-
-                  letterSpacing: 1.0,
-                ),
-              ),
-              InkWell(
-                onTap: refreshData,
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 6,
-                    horizontal: 16,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).dividerColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Theme.of(context).dividerColor),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.refresh_rounded,
-                        size: 14,
-                        color: Theme.of(context).textTheme.bodyMedium?.color,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'RECARGAR',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).textTheme.bodyMedium?.color,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-
+          // 1. INPUT (Paquetes Recibidos)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             decoration: AppTheme.cardDecoration(context),
@@ -2874,281 +2760,230 @@ class _UserDetailContentState extends State<UserDetailContent> {
             ),
           ),
 
-          const SizedBox(height: 24),
-
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _isOutputExpanded = !_isOutputExpanded;
-                  });
-                },
-                child: Text(
-                  'Colas de Salida / Output (${outputs.length})',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
-                    letterSpacing: 1.0,
-                  ),
-                ),
-              ),
-              InkWell(
-                onTap: () {
-                  setState(() {
-                    _isOutputExpanded = !_isOutputExpanded;
-                  });
-                },
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 6,
-                    horizontal: 16,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).dividerColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Theme.of(context).dividerColor),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        _isOutputExpanded
-                            ? Icons.keyboard_arrow_up_rounded
-                            : Icons.keyboard_arrow_down_rounded,
-                        size: 14,
-                        color: Theme.of(context).textTheme.bodyMedium?.color,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _isOutputExpanded ? 'VER MENOS' : 'VER MÁS',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).textTheme.bodyMedium?.color,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-
           const SizedBox(height: 12),
 
-          AnimatedSize(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.fastOutSlowIn,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (outputs.isNotEmpty)
-                  ...sortedKeys
-                      .take(_isOutputExpanded ? sortedKeys.length : 1)
-                      .map((key) {
-                        String displayName = key;
-                        final value = outputs[key];
-                        if (displayName.contains('/')) {
-                          displayName = displayName.split('/').last;
-                        }
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12.0),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 16,
-                            ),
-                            decoration: AppTheme.cardDecoration(context),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.arrow_upward_rounded,
-                                  size: 20,
-                                  color: AppTheme.errorRed,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    displayName,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color:
-                                          Theme.of(
-                                            context,
-                                          ).textTheme.bodyLarge?.color,
-                                    ),
-                                  ),
-                                ),
-                                if (value.toString() == '-1')
-                                  const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                else
-                                  Text(
-                                    '$value paquetes',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                      color:
-                                          (int.tryParse(value.toString()) ??
-                                                      0) >
-                                                  0
-                                              ? AppTheme.primaryBlue
-                                              : Theme.of(
-                                                context,
-                                              ).textTheme.bodyMedium?.color,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        );
-                      })
-                else if (_isOutputExpanded)
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
+          // 2. OUTPUT (Paquetes Salida - Expandible)
+          InkWell(
+            onTap: () => setState(() => _isOutputExpanded = !_isOutputExpanded),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              decoration: AppTheme.cardDecoration(context),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.arrow_upward_rounded,
+                    size: 20,
+                    color: AppTheme.errorRed,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: Text(
-                      "No hay colas de salida configuradas.",
+                      'Paquetes Salida',
                       style: TextStyle(
-                        color: Theme.of(context).textTheme.bodyMedium?.color,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
                       ),
                     ),
                   ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 32),
-
-          // CONSOLA DE LOGS (Movida aquí)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Consola / Logs',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).textTheme.bodyMedium?.color,
-                  letterSpacing: 1.0,
-                ),
-              ),
-              Row(
-                children: [
-                  if (userLogs.isNotEmpty)
-                    IconButton(
-                      onPressed: copyLogsToClipboard,
-                      icon: const Icon(Icons.copy_all_rounded, size: 20),
-                      color: AppTheme.primaryBlue,
-                      tooltip: 'Copiar Logs',
-                    ),
-                  InkWell(
-                    onTap: fetchUserLogs,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 6,
-                        horizontal: 16,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).dividerColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Theme.of(context).dividerColor,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.refresh_rounded,
-                            size: 14,
-                            color:
-                                Theme.of(context).textTheme.bodyMedium?.color,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'RECARGAR',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color:
-                                  Theme.of(context).textTheme.bodyMedium?.color,
-                            ),
-                          ),
-                        ],
-                      ),
+                  Text(
+                    '$totalOutputPackages paquetes',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color:
+                          totalOutputPackages > 0
+                              ? AppTheme.primaryBlue
+                              : Theme.of(context).textTheme.bodyMedium?.color,
                     ),
                   ),
                 ],
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            height: 250, // Altura fija para la consola
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Theme.of(context).cardColor,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Theme.of(context).dividerColor),
             ),
+          ),
+
+          // Lista detallada de outputs (Solo visible al expandir)
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.fastOutSlowIn,
             child:
-                loadingLogs
-                    ? const Center(child: CircularProgressIndicator())
-                    : userLogs.isEmpty
-                    ? Center(
-                      child: Text(
-                        'No hay logs recientes para mostrar.',
-                        style: TextStyle(
-                          color: Theme.of(context).textTheme.bodyMedium?.color,
-                        ),
-                      ),
-                    )
-                    : Scrollbar(
-                      thumbVisibility: true,
-                      child: ListView.builder(
-                        itemCount: userLogs.length,
-                        itemBuilder: (context, index) {
-                          final line = userLogs[index];
-                          Color lineColor =
-                              Theme.of(context).textTheme.bodyMedium?.color ??
-                              Colors.grey;
-                          FontWeight fontWeight = FontWeight.normal;
-
-                          if (line.toLowerCase().contains('error')) {
-                            lineColor = AppTheme.errorRed;
-                          } else if (line.toLowerCase().contains('warn')) {
-                            lineColor = AppTheme.warningAmber;
-                          } else if (line.toLowerCase().startsWith('---')) {
-                            lineColor = AppTheme.primaryBlue;
-                            fontWeight = FontWeight.bold;
-                          }
-
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 4.0),
-                            child: Text(
-                              line,
-                              style: AppTheme.monoStyle.copyWith(
-                                fontSize: 12,
-                                color: lineColor,
-                                fontWeight: fontWeight,
+                _isOutputExpanded
+                    ? Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Column(
+                        children: [
+                          if (outputs.isNotEmpty)
+                            ...sortedKeys.map((key) {
+                              String displayName = key;
+                              final value = outputs[key];
+                              if (displayName.contains('/')) {
+                                displayName = displayName.split('/').last;
+                              }
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8.0),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(
+                                      context,
+                                    ).scaffoldBackgroundColor.withOpacity(0.5),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: Theme.of(
+                                        context,
+                                      ).dividerColor.withOpacity(0.5),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.subdirectory_arrow_right_rounded,
+                                        size: 16,
+                                        color: Theme.of(context).dividerColor,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          displayName,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color:
+                                                Theme.of(
+                                                  context,
+                                                ).textTheme.bodyLarge?.color,
+                                          ),
+                                        ),
+                                      ),
+                                      if (value.toString() == '-1')
+                                        const SizedBox(
+                                          width: 12,
+                                          height: 12,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      else
+                                        Text(
+                                          '$value',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color:
+                                                (int.tryParse(
+                                                              value.toString(),
+                                                            ) ??
+                                                            0) >
+                                                        0
+                                                    ? AppTheme.primaryBlue
+                                                    : Theme.of(context)
+                                                        .textTheme
+                                                        .bodyMedium
+                                                        ?.color,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            })
+                          else
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Text(
+                                "No hay colas de salida configuradas.",
+                                style: TextStyle(
+                                  color:
+                                      Theme.of(
+                                        context,
+                                      ).textTheme.bodyMedium?.color,
+                                  fontStyle: FontStyle.italic,
+                                ),
                               ),
                             ),
-                          );
-                        },
+                        ],
                       ),
-                    ),
+                    )
+                    : const SizedBox.shrink(),
+          ),
+
+          const SizedBox(height: 24),
+
+          // 3. CONSOLA DE LOGS (Tap para copiar)
+          GestureDetector(
+            onTap: copyLogsToClipboard,
+            child: Container(
+              width: double.infinity,
+              height: 250,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Theme.of(context).dividerColor),
+              ),
+              child:
+                  loadingLogs
+                      ? const Center(child: CircularProgressIndicator())
+                      : userLogs.isEmpty
+                      ? Center(
+                        child: Text(
+                          'No hay logs recientes.',
+                          style: TextStyle(
+                            color:
+                                Theme.of(context).textTheme.bodyMedium?.color,
+                          ),
+                        ),
+                      )
+                      : Scrollbar(
+                        thumbVisibility: true,
+                        child: ListView.builder(
+                          itemCount: userLogs.length,
+                          itemBuilder: (context, index) {
+                            final line = userLogs[index];
+                            Color lineColor =
+                                Theme.of(context).textTheme.bodyMedium?.color ??
+                                Colors.grey;
+                            FontWeight fontWeight = FontWeight.normal;
+
+                            if (line.toLowerCase().contains('error')) {
+                              lineColor = AppTheme.errorRed;
+                            } else if (line.toLowerCase().contains('warn')) {
+                              lineColor = AppTheme.warningAmber;
+                            } else if (line.toLowerCase().startsWith('---')) {
+                              lineColor = AppTheme.primaryBlue;
+                              fontWeight = FontWeight.bold;
+                            }
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 4.0),
+                              child: Text(
+                                line,
+                                style: AppTheme.monoStyle.copyWith(
+                                  fontSize: 12,
+                                  color: lineColor,
+                                  fontWeight: fontWeight,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: Text(
+              "Toca el registro para copiar los logs",
+              style: TextStyle(
+                fontSize: 10,
+                color: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.color?.withOpacity(0.5),
+              ),
+            ),
           ),
         ],
       ),
