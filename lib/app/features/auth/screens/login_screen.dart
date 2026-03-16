@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:replicatorviewer/app/common/widgets/app_logo.dart';
 import 'package:replicatorviewer/app/features/auth/widgets/login_form.dart';
-import 'package:replicatorviewer/app/features/auth/widgets/social_login_section.dart';
 
 class LoginScreen extends StatelessWidget {
   final VoidCallback onThemeToggle;
@@ -33,74 +32,72 @@ class LoginScreen extends StatelessWidget {
           const SizedBox(width: 16),
         ],
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(32.0),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                AppLogo(height: 150, isDarkMode: isDarkMode),
-                const SizedBox(height: 40),
-                Text(
-                  'Bienvenido',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: theme.textTheme.headlineLarge?.color,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            // Usamos reverse: true para que al abrir el teclado, el scroll se ajuste desde abajo
+            reverse: true,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // --- ZONA SUPERIOR (Logo y Título) ---
+                  Padding(
+                    padding: const EdgeInsets.only(top: 60, bottom: 40),
+                    child: Column(
+                      children: [
+                        AppLogo(height: 80, isDarkMode: isDarkMode),
+                        const SizedBox(height: 24),
+                        Text(
+                          '¡Hola,\nBienvenido!',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 36,
+                            height: 1.2,
+                            fontWeight: FontWeight.w300, // Light font
+                            color: theme.textTheme.headlineLarge?.color,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 30),
-                LoginForm(onThemeToggle: onThemeToggle, isDarkMode: isDarkMode),
-                const SizedBox(height: 20),
-                const SocialLoginSection(),
-                const SizedBox(height: 30),
-                _buildRegisterLink(context, theme.textTheme.bodyMedium?.color ?? Colors.grey),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
-  Widget _buildRegisterLink(BuildContext context, Color textColor) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text("¿No tienes cuenta? ", style: TextStyle(color: textColor)),
-        GestureDetector(
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text(
-                  'Esta funcionalidad aun no esta disponible',
-                  style: TextStyle(color: Colors.white),
-                ),
-                backgroundColor: Theme.of(context).primaryColor,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                margin: const EdgeInsets.symmetric(
-                  vertical: 16,
-                  horizontal: 32,
-                ),
+                  // --- BOTTOM SHEET (Formulario) ---
+                  Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(
+                      maxWidth: 600,
+                    ), // Límite para tablets/PC
+                    decoration: BoxDecoration(
+                      color: theme.cardColor,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(40),
+                        topRight: Radius.circular(40),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 20,
+                          offset: const Offset(0, -5),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.fromLTRB(32, 40, 32, 32),
+                    child: SafeArea(
+                      top: false,
+                      child: LoginForm(
+                        onThemeToggle: onThemeToggle,
+                        isDarkMode: isDarkMode,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            );
-          },
-          child: Text(
-            "Regístrate",
-            style: TextStyle(
-              color: Theme.of(context).primaryColor,
-              fontWeight: FontWeight.bold,
             ),
-          ),
-        ),
-      ],
+          );
+        },
+      ),
     );
   }
 }

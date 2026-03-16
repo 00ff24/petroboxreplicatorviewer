@@ -1,0 +1,38 @@
+name: Build Windows Release
+
+on:
+  push:
+    branches: [ "main", "master" ] # Se ejecutará al hacer push a estas ramas
+  workflow_dispatch: # Permite ejecutar la compilación manualmente desde la web de GitHub
+
+jobs:
+  build:
+    name: Build for Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true # Acelera compilaciones futuras
+
+      - name: Enable Windows Desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows App
+        run: flutter build windows --release
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReplicatorViewer-Windows
+          # Esta es la ruta donde Flutter genera el ejecutable y sus dependencias (dlls)
+          path: build/windows/x64/runner/Release/
+          retention-days: 7

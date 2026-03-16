@@ -200,7 +200,7 @@ class ServerManager {
 
     'http://frodo.petroboxinc.com:5001/usuarios',
 
-    'http://gandalf.petroboxinc.com:5001/usuarios',
+    'http://192.168.125.204:5001/usuarios',
   ];
 
   static Future<bool> hasCache() async {
@@ -294,14 +294,18 @@ class ServerManager {
 
     // Intentamos deducir un nombre amigable del subdominio (ej: bilbo)
 
-    String name = uri.host.split('.').first.toUpperCase();
+    // Si parece una IP (empieza con número), la dejamos completa. Si es dominio, cortamos.
+    String host = uri.host;
+    String name = host;
 
-    if (name.isEmpty) name = 'UNKNOWN';
+    if (!RegExp(r'^\d').hasMatch(host)) {
+      name = host.split('.').first;
+    }
 
     return ServerData(
       id: name.toLowerCase(),
 
-      name: name,
+      name: name.toUpperCase().isEmpty ? 'UNKNOWN' : name.toUpperCase(),
 
       apiUrl: endpoint,
 
@@ -494,6 +498,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<ServerData> servers = [];
 
+  Set<String> _expandedCardIds = {};
+
   Timer? _timer;
 
   @override
@@ -548,8 +554,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _refreshServers() async {
     // Usamos apiUrl como clave para asegurar que coincida el endpoint con la caché
 
+    final validEndpoints = ServerManager.apiEndpoints.toSet();
+
     final Map<String, ServerData> currentMap = {
-      for (var s in servers) s.apiUrl: s,
+      for (var s in servers)
+        if (validEndpoints.contains(s.apiUrl)) s.apiUrl: s,
     };
 
     final stream = ServerManager.streamServers();
@@ -695,6 +704,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  void _toggleGlobalExpansion() {
+    setState(() {
+      // Si todas están expandidas, las colapsamos todas.
+      // Si no (hay alguna cerrada o todas cerradas), las expandimos todas.
+      if (_expandedCardIds.length == servers.length) {
+        _expandedCardIds.clear();
+      } else {
+        _expandedCardIds = servers.map((s) => s.id).toSet();
+      }
+    });
+  }
+
   double _estimateCardHeight(ServerData server) {
     // Altura base estimada (Header + Resources + Footer + Paddings)
     // Ajustado para cubrir el contenido estático de la tarjeta
@@ -768,38 +789,48 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                 children: [
                   // HEADER
-                  buildHeader(context),
+                  buildHeader(context, isMobile),
 
                   const SizedBox(height: 32),
 
                   // GRID DE SERVIDORES
                   Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.only(bottom: 20),
+                    child: RefreshIndicator(
+                      onRefresh: _refreshServers,
+                      color: AppTheme.primaryBlue,
+                      child: SingleChildScrollView(
+                        physics:
+                            const AlwaysScrollableScrollPhysics(), // Obligatorio para que funcione el pull-to-refresh
+                        padding: const EdgeInsets.only(bottom: 20),
 
-                      child: SizedBox(
-                        width: double.infinity,
+                        child: SizedBox(
+                          width: double.infinity,
 
-                        child: Wrap(
-                          alignment: WrapAlignment.center, // 3. Centrado
+                          child: Wrap(
+                            alignment: WrapAlignment.center, // 3. Centrado
 
-                          spacing: 16, // 4. Padding entre tarjetas igual
+                            spacing: 16, // 4. Padding entre tarjetas igual
 
-                          runSpacing: 16,
+                            runSpacing: 16,
 
-                          children:
-                              servers.map((server) {
-                                return SizedBox(
-                                  width: cardWidth,
-                                  height:
-                                      maxCardHeight, // Aplicamos la altura máxima a todas
-                                  child: buildServerCard(
-                                    context,
-                                    server,
-                                    maxIpLines,
-                                  ),
-                                );
-                              }).toList(),
+                            children:
+                                servers.map((server) {
+                                  final bool isExpanded =
+                                      isMobile &&
+                                      _expandedCardIds.contains(server.id);
+                                  return SizedBox(
+                                    width: cardWidth,
+                                    height: isMobile ? null : maxCardHeight,
+                                    child: buildServerCard(
+                                      context,
+                                      server,
+                                      maxIpLines,
+                                      isMobile,
+                                      isExpanded,
+                                    ),
+                                  );
+                                }).toList(),
+                          ),
                         ),
                       ),
                     ),
@@ -819,7 +850,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // ==========================================
 
-  Widget buildHeader(BuildContext context) {
+  Widget buildHeader(BuildContext context, bool isMobile) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
 
@@ -827,44 +858,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // Logo y Título
         Row(
           children: [
-            // Logo estilo React (Activity icon con gradiente)
+            // Avatar del Perfil (Movido al principio)
             Container(
-              width: 36,
+              width: 32,
 
-              height: 36,
+              height: 32,
 
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    AppTheme.primaryBlue,
+                color: Theme.of(context).dividerColor.withOpacity(0.1),
 
-                    Color(0xFF4F46E5),
-                  ], // Blue to Indigo
+                borderRadius: BorderRadius.circular(16),
 
-                  begin: Alignment.topLeft,
-
-                  end: Alignment.bottomRight,
-                ),
-
-                borderRadius: BorderRadius.circular(8),
-
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryBlue.withOpacity(0.3),
-
-                    blurRadius: 8,
-
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                border: Border.all(color: Theme.of(context).dividerColor),
               ),
 
-              child: const Icon(
-                Icons.show_chart_rounded,
+              child: const Center(
+                child: Text(
+                  'P',
 
-                color: Colors.white,
+                  style: TextStyle(
+                    color: AppTheme.primaryBlue,
 
-                size: 20,
+                    fontWeight: FontWeight.bold,
+
+                    fontSize: 14,
+                  ),
+                ),
               ),
             ),
 
@@ -946,19 +965,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // Controles derechos
         Row(
           children: [
+            // Botón Global Expandir/Colapsar (Solo visible en móvil)
+            if (isMobile)
+              IconButton(
+                padding: const EdgeInsets.all(6),
+                constraints: const BoxConstraints(),
+                onPressed: _toggleGlobalExpansion,
+                icon: Icon(
+                  _expandedCardIds.length == servers.length
+                      ? Icons.unfold_less_rounded
+                      : Icons.unfold_more_rounded,
+                ),
+                iconSize: 22,
+                tooltip:
+                    _expandedCardIds.length == servers.length
+                        ? 'Colapsar todo'
+                        : 'Expandir todo',
+                color: Theme.of(context).textTheme.bodyMedium?.color,
+              ),
+
             IconButton(
+              padding: const EdgeInsets.all(6),
+              constraints: const BoxConstraints(),
               onPressed: widget.onThemeToggle,
 
               icon: const Icon(Icons.light_mode_rounded),
-
+              iconSize: 22,
               tooltip: 'Cambiar tema',
 
               color: Theme.of(context).textTheme.bodyMedium?.color,
             ),
 
             IconButton(
+              padding: const EdgeInsets.all(6),
+              constraints: const BoxConstraints(),
               icon: const Icon(Icons.logout_rounded),
-
+              iconSize: 22,
               color: AppTheme.errorRed,
 
               tooltip: 'Cerrar Sesión',
@@ -975,37 +1017,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 );
               },
             ),
-
-            const SizedBox(width: 8),
-
-            // Avatar del Perfil
-            Container(
-              width: 32,
-
-              height: 32,
-
-              decoration: BoxDecoration(
-                color: Theme.of(context).dividerColor.withOpacity(0.1),
-
-                borderRadius: BorderRadius.circular(16),
-
-                border: Border.all(color: Theme.of(context).dividerColor),
-              ),
-
-              child: const Center(
-                child: Text(
-                  'P',
-
-                  style: TextStyle(
-                    color: AppTheme.primaryBlue,
-
-                    fontWeight: FontWeight.bold,
-
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
       ],
@@ -1016,9 +1027,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     BuildContext context,
     ServerData server,
     int maxIpLines,
+    bool isMobile,
+    bool isExpanded,
   ) {
     final String osName = server.os.split(' ').first;
-    final String osVersion = server.os.replaceFirst(osName, '').trim();
+    server.os.replaceFirst(osName, '').trim();
 
     Color statusColor;
 
@@ -1075,27 +1088,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             .withOpacity(0.1);
     }
 
-    return GestureDetector(
-      onTap: () {
-        // NAVEGACIÓN A DETALLES DEL SERVIDOR
+    return Container(
+      padding: const EdgeInsets.all(20),
 
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => ServerDetailScreen(server: server)),
-        );
-      },
+      decoration: AppTheme.cardDecoration(context),
 
-      child: Container(
-        padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min, // Para que AnimatedSize funcione bien
 
-        decoration: AppTheme.cardDecoration(context),
-
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-
-          children: [
-            // Cabecera del Servidor
-            Row(
+        children: [
+          // Cabecera del Servidor (Tap -> Toggle en móvil / Navigate en Desktop)
+          GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () {
+              if (isMobile) {
+                setState(() {
+                  if (isExpanded) {
+                    _expandedCardIds.remove(server.id);
+                  } else {
+                    _expandedCardIds.add(server.id);
+                  }
+                });
+              } else {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ServerDetailScreen(server: server),
+                  ),
+                );
+              }
+            },
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
 
               children: [
@@ -1225,424 +1249,408 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 Icon(statusIcon, color: statusColor, size: 24),
               ],
             ),
+          ),
 
-            const SizedBox(height: 20),
+          // Contenido expandible (Tap -> Navegar a detalle)
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.fastOutSlowIn,
+            child: Visibility(
+              visible: !isMobile || isExpanded,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ServerDetailScreen(server: server),
+                    ),
+                  );
+                },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 20),
 
-            // IPs
-            SizedBox(
-              height: maxIpLines * 28.0,
-              child: Column(
-                children:
-                    server.ip.split('\n').map((line) {
-                      if (line.trim().isEmpty) return const SizedBox.shrink();
+                    // IPs
+                    SizedBox(
+                      height: isMobile ? null : maxIpLines * 28.0,
+                      child: Column(
+                        children:
+                            server.ip.split('\n').map((line) {
+                              if (line.trim().isEmpty) {
+                                return const SizedBox.shrink();
+                              }
 
-                      IconData icon = Icons.wifi;
+                              IconData icon = Icons.wifi;
 
-                      String label = "ip";
+                              String label = "ip";
 
-                      if (line.toLowerCase().contains('eth0')) {
-                        icon = Icons.public;
+                              if (line.toLowerCase().contains('eth0')) {
+                                icon = Icons.public;
 
-                        label = "eth0";
-                      } else if (line.toLowerCase().contains('ham')) {
-                        icon = Icons.security;
+                                label = "eth0";
+                              } else if (line.toLowerCase().contains('ham')) {
+                                icon = Icons.security;
 
-                        label = "ham0";
-                      }
+                                label = "ham0";
+                              }
 
-                      // Limpiar la cadena para mostrar solo la IP si es posible
+                              // Limpiar la cadena para mostrar solo la IP si es posible
 
-                      String ipValue = line.replaceAll(RegExp(r'.*:\s*'), '');
+                              String ipValue = line.replaceAll(
+                                RegExp(r'.*:\s*'),
+                                '',
+                              );
 
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 6.0),
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 6.0),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      icon,
+                                      size: 14,
+                                      color: AppTheme.textMuted,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    SizedBox(
+                                      width: 40,
+                                      child: Text(
+                                        '$label:',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        ipValue,
+                                        style: AppTheme.monoStyle.copyWith(
+                                          fontSize: 13,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                      ),
+                    ),
 
-                        child: Row(
+                    // Recursos (CPU / RAM) con Barras
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).scaffoldBackgroundColor.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Theme.of(
+                            context,
+                          ).dividerColor.withOpacity(0.05),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          // CPU
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.memory_rounded,
+                                          size: 12,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'CPU',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color:
+                                                Theme.of(
+                                                  context,
+                                                ).textTheme.bodyMedium?.color,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    Text(
+                                      server.rawCpu.toStringAsFixed(1),
+                                      style: AppTheme.monoStyle.copyWith(
+                                        fontSize: 11,
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).textTheme.bodyMedium?.color,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+
+                                // Barra de Progreso CPU
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Stack(
+                                        children: [
+                                          Container(
+                                            height: 6,
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(
+                                                context,
+                                              ).dividerColor.withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(3),
+                                            ),
+                                          ),
+                                          FractionallySizedBox(
+                                            widthFactor: (server.rawCpu / 100)
+                                                .clamp(0.0, 1.0),
+                                            child: Container(
+                                              height: 6,
+                                              decoration: BoxDecoration(
+                                                color:
+                                                    server.rawCpu > 80
+                                                        ? AppTheme.errorRed
+                                                        : server.rawCpu > 50
+                                                        ? AppTheme.warningAmber
+                                                        : AppTheme.successGreen,
+                                                borderRadius:
+                                                    BorderRadius.circular(3),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '${server.rawCpu.toStringAsFixed(0)}%',
+                                      style: AppTheme.monoStyle.copyWith(
+                                        fontSize: 10,
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).textTheme.bodyMedium?.color,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(width: 16),
+
+                          // RAM
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.sd_storage_rounded,
+                                          size: 12,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'RAM',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color:
+                                                Theme.of(
+                                                  context,
+                                                ).textTheme.bodyMedium?.color,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    Text(
+                                      server.ramUsage,
+                                      style: AppTheme.monoStyle.copyWith(
+                                        fontSize: 11,
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).textTheme.bodyMedium?.color,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+
+                                // Barra de Progreso RAM
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Stack(
+                                        children: [
+                                          Container(
+                                            height: 6,
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(
+                                                context,
+                                              ).dividerColor.withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(3),
+                                            ),
+                                          ),
+                                          FractionallySizedBox(
+                                            widthFactor: (server.rawRamPercent /
+                                                    100)
+                                                .clamp(0.0, 1.0),
+                                            child: Container(
+                                              height: 6,
+                                              decoration: BoxDecoration(
+                                                color: AppTheme.primaryBlue,
+                                                borderRadius:
+                                                    BorderRadius.circular(3),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '${server.rawRamPercent.toStringAsFixed(0)}%',
+                                      style: AppTheme.monoStyle.copyWith(
+                                        fontSize: 10,
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).textTheme.bodyMedium?.color,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    //const Spacer(),
+                    const SizedBox(height: 20),
+
+                    // Resumen de Nodos
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
                           children: [
-                            Icon(icon, size: 14, color: AppTheme.textMuted),
-
-                            const SizedBox(width: 8),
-
-                            SizedBox(
-                              width: 40,
-
-                              child: Text(
-                                '$label:',
-
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: AppTheme.successGreen,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            RichText(
+                              text: TextSpan(
                                 style: TextStyle(
                                   fontSize: 13,
-
                                   color:
                                       Theme.of(
                                         context,
                                       ).textTheme.bodyMedium?.color,
                                 ),
+                                children: [
+                                  TextSpan(text: 'Activos: '),
+                                  TextSpan(
+                                    text: '${server.activeNodes}',
+                                    style: TextStyle(
+                                      color:
+                                          Theme.of(
+                                            context,
+                                          ).textTheme.bodyMedium?.color,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-
-                            Expanded(
-                              child: Text(
-                                ipValue,
-
-                                style: AppTheme.monoStyle.copyWith(
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).dividerColor.withOpacity(0.1),
+                                shape: BoxShape.circle,
+                              ), // Gris para inactivos
+                            ),
+                            const SizedBox(width: 6),
+                            RichText(
+                              text: TextSpan(
+                                style: TextStyle(
                                   fontSize: 13,
-
                                   color:
                                       Theme.of(
                                         context,
                                       ).textTheme.bodyMedium?.color,
                                 ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-              ),
-            ),
-
-            // Recursos (CPU / RAM) con Barras
-            Container(
-              padding: const EdgeInsets.all(12),
-
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).scaffoldBackgroundColor.withOpacity(0.5),
-
-                borderRadius: BorderRadius.circular(12),
-
-                border: Border.all(
-                  color: Theme.of(context).dividerColor.withOpacity(0.05),
-                ),
-              ),
-
-              child: Row(
-                children: [
-                  // CPU
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.memory_rounded,
-
-                                  size: 12,
-
-                                  color:
-                                      Theme.of(
-                                        context,
-                                      ).textTheme.bodyMedium?.color,
-                                ),
-
-                                SizedBox(width: 4),
-
-                                Text(
-                                  'CPU',
-
-                                  style: TextStyle(
-                                    fontSize: 11,
-
-                                    color:
-                                        Theme.of(
-                                          context,
-                                        ).textTheme.bodyMedium?.color,
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            Text(
-                              server.rawCpu.toStringAsFixed(1),
-
-                              style: AppTheme.monoStyle.copyWith(
-                                fontSize: 11,
-
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).textTheme.bodyMedium?.color,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 6),
-
-                        // Barra de Progreso CPU
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Stack(
                                 children: [
-                                  Container(
-                                    height: 6,
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(
-                                        context,
-                                      ).dividerColor.withOpacity(0.1),
-
-                                      borderRadius: BorderRadius.circular(3),
-                                    ),
-                                  ),
-
-                                  FractionallySizedBox(
-                                    widthFactor: (server.rawCpu / 100).clamp(
-                                      0.0,
-
-                                      1.0,
-                                    ),
-
-                                    child: Container(
-                                      height: 6,
-
-                                      decoration: BoxDecoration(
-                                        color:
-                                            server.rawCpu > 80
-                                                ? AppTheme.errorRed
-                                                : server.rawCpu > 50
-                                                ? AppTheme.warningAmber
-                                                : AppTheme.successGreen,
-
-                                        borderRadius: BorderRadius.circular(3),
-                                      ),
+                                  TextSpan(text: 'Inactivos: '),
+                                  TextSpan(
+                                    text: '${server.inactiveNodes}',
+                                    style: TextStyle(
+                                      color:
+                                          Theme.of(
+                                            context,
+                                          ).textTheme.bodyMedium?.color,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                 ],
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '${server.rawCpu.toStringAsFixed(0)}%',
-                              style: AppTheme.monoStyle.copyWith(
-                                fontSize: 10,
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).textTheme.bodyMedium?.color,
                               ),
                             ),
                           ],
                         ),
                       ],
                     ),
-                  ),
-
-                  const SizedBox(width: 16),
-
-                  // RAM
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.sd_storage_rounded,
-
-                                  size: 12,
-
-                                  color:
-                                      Theme.of(
-                                        context,
-                                      ).textTheme.bodyMedium?.color,
-                                ),
-
-                                SizedBox(width: 4),
-
-                                Text(
-                                  'RAM',
-
-                                  style: TextStyle(
-                                    fontSize: 11,
-
-                                    color:
-                                        Theme.of(
-                                          context,
-                                        ).textTheme.bodyMedium?.color,
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            Text(
-                              server.ramUsage,
-                              style: AppTheme.monoStyle.copyWith(
-                                fontSize: 11,
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).textTheme.bodyMedium?.color,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 6),
-
-                        // Barra de Progreso RAM
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Stack(
-                                children: [
-                                  Container(
-                                    height: 6,
-
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(
-                                        context,
-                                      ).dividerColor.withOpacity(0.1),
-
-                                      borderRadius: BorderRadius.circular(3),
-                                    ),
-                                  ),
-
-                                  FractionallySizedBox(
-                                    widthFactor: (server.rawRamPercent / 100)
-                                        .clamp(0.0, 1.0),
-
-                                    child: Container(
-                                      height: 6,
-
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.primaryBlue,
-
-                                        borderRadius: BorderRadius.circular(3),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '${server.rawRamPercent.toStringAsFixed(0)}%',
-                              style: AppTheme.monoStyle.copyWith(
-                                fontSize: 10,
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).textTheme.bodyMedium?.color,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-
-            //const Spacer(),
-            const SizedBox(height: 20),
-
-            // Resumen de Nodos
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 8,
-
-                      height: 8,
-
-                      decoration: const BoxDecoration(
-                        color: AppTheme.successGreen,
-
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-
-                    const SizedBox(width: 6),
-                    RichText(
-                      text: TextSpan(
-                        style: TextStyle(
-                          fontSize: 13,
-
-                          color: Theme.of(context).textTheme.bodyMedium?.color,
-                        ),
-
-                        children: [
-                          TextSpan(text: 'Activos: '),
-
-                          TextSpan(
-                            text: '${server.activeNodes}',
-
-                            style: TextStyle(
-                              color:
-                                  Theme.of(context).textTheme.bodyMedium?.color,
-
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-
-                Row(
-                  children: [
-                    Container(
-                      width: 8,
-
-                      height: 8,
-
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).dividerColor.withOpacity(0.1),
-
-                        shape: BoxShape.circle,
-                      ), // Gris para inactivos
-                    ),
-
-                    const SizedBox(width: 6),
-
-                    RichText(
-                      text: TextSpan(
-                        style: TextStyle(
-                          fontSize: 13,
-
-                          color: Theme.of(context).textTheme.bodyMedium?.color,
-                        ),
-
-                        children: [
-                          TextSpan(text: 'Inactivos: '),
-
-                          TextSpan(
-                            text: '${server.inactiveNodes}',
-
-                            style: TextStyle(
-                              color:
-                                  Theme.of(context).textTheme.bodyMedium?.color,
-
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1666,13 +1674,17 @@ class ServerDetailScreen extends StatefulWidget {
 class _ServerDetailScreenState extends State<ServerDetailScreen> {
   List<dynamic> users = [];
 
-  Map<String, dynamic>? selectedUser;
+  Map<String, dynamic>? selectedUser; // Usuario seleccionado en el buscador
+  Map<String, dynamic>? _detailedUser; // Usuario "fijado" para mostrar detalles
+  bool _isUserDetailExpanded = false; // Controla si el panel está expandido
 
   bool isLoading = true;
 
-  List<String> userLogs = [];
+  // Controlador para poder limpiar el texto desde el icono X si fuera necesario
+  TextEditingController? _searchController;
 
-  bool loadingLogs = false;
+  // Key para controlar el widget hijo UserDetailContent desde aquí (el padre)
+  final GlobalKey<UserDetailContentState> _userDetailKey = GlobalKey();
 
   @override
   void initState() {
@@ -1752,52 +1764,125 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
     }
   }
 
-  Future<void> fetchUserLogs(String username) async {
+  // Lógica unificada: Seleccionar + Cargar + Mostrar
+  void _onUserSelected(Map<String, dynamic> selection) {
     setState(() {
-      loadingLogs = true;
-
-      userLogs = [];
+      selectedUser = selection;
+      _detailedUser = selection; // Mostrar detalles inmediatamente
+      _isUserDetailExpanded = true; // Expandir panel automáticamente
+      FocusScope.of(context).unfocus(); // Ocultar teclado
     });
 
-    try {
-      final url = '${widget.server.apiUrl}/$username/logs';
-
-      final response = await http.get(Uri.parse(url));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-
-        if (data is Map && data.containsKey('logs')) {
-          setState(() => userLogs = List<String>.from(data['logs']));
-        }
-      }
-    } catch (e) {
-      debugPrint('Error fetching user logs: $e');
-
-      setState(() => userLogs = ['Error al obtener logs: $e']);
-    } finally {
-      if (mounted) setState(() => loadingLogs = false);
+    // Actualizar texto del buscador si tenemos el controlador
+    if (_searchController != null &&
+        _searchController!.text != selection['usuario']) {
+      _searchController!.text = selection['usuario'];
     }
+
+    refreshUserFiles(selection['usuario']);
   }
 
-  void navigateToUserDetail() {
-    if (selectedUser != null) {
-      Navigator.push(
-        context,
+  Future<void> handleRestartService(Map<String, dynamic> user) async {
+    final String type = user['tipo_instalacion'] ?? 'server';
+    final String username = user['usuario'];
+    String title = 'Reiniciar Servicio';
+    String content = '';
 
-        MaterialPageRoute(
-          builder:
-              (_) => UserDetailScreen(
-                username: selectedUser!['usuario'],
+    if (type == 'server_node') {
+      content =
+          'Se reiniciarán los servicios:\n- petroboxreplicatorserver\n- petroboxreplicatornode\n\n¿Estás seguro?';
+    } else if (type == 'node') {
+      content =
+          'Se reiniciará el servicio:\n- petroboxreplicatornode\n\n¿Estás seguro?';
+    } else {
+      content =
+          'Se reiniciará el servicio:\n- petroboxreplicatorserver\n\n¿Estás seguro?';
+    }
 
-                serverName: widget.server.name,
-
-                apiUrl: widget.server.apiUrl,
-
-                userData: selectedUser!,
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: Theme.of(context).cardColor,
+            title: Row(
+              children: [
+                const Icon(
+                  Icons.warning_amber_rounded,
+                  color: AppTheme.warningAmber,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: Theme.of(context).textTheme.titleLarge?.color,
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              content,
+              style: TextStyle(
+                color: Theme.of(context).textTheme.bodyMedium?.color,
               ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.errorRed,
+                ),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text(
+                  'Reiniciar',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+    );
+
+    if (confirm == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enviando orden de reinicio...'),
+          backgroundColor: AppTheme.primaryBlue,
         ),
       );
+
+      try {
+        final url = '${widget.server.apiUrl}/$username/reiniciar-servicios';
+        final response = await http.post(Uri.parse(url));
+
+        if (mounted) {
+          if (response.statusCode == 200) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Servicios reiniciados correctamente.'),
+                backgroundColor: AppTheme.successGreen,
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error al reiniciar: ${response.body}'),
+                backgroundColor: AppTheme.errorRed,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error de conexión: $e'),
+              backgroundColor: AppTheme.errorRed,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -1805,765 +1890,590 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-
-        elevation: 0,
-
-        iconTheme: IconThemeData(color: Theme.of(context).iconTheme.color),
-
-        title: Text(
-          widget.server.name,
-
-          style: TextStyle(
-            color: Theme.of(context).textTheme.titleLarge?.color, // Dynamic
-
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1000),
-
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-
-              children: [
-                // BUSCADOR DE USUARIO
-                Container(
-                  padding: const EdgeInsets.all(20),
-
-                  decoration: AppTheme.cardDecoration(context),
-
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-
+      body: SafeArea(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1000),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.search_rounded,
-
-                            color: AppTheme.primaryBlue,
-                          ),
-
-                          const SizedBox(width: 8),
-
-                          Text(
-                            'Buscar Usuario',
-
-                            style: TextStyle(
-                              fontSize: 18.0,
-
-                              fontWeight: FontWeight.bold,
-
-                              color:
-                                  Theme.of(context).textTheme.titleLarge?.color,
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      Text(
-                        'Encuentra un usuario para ver sus colas de paquetes.',
-
-                        style: TextStyle(
-                          fontSize: 14,
-
+                      Container(
+                        height: 48,
+                        width: 48,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).cardColor,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.arrow_back_rounded, size: 20),
                           color: Theme.of(context).textTheme.bodyMedium?.color,
+                          padding: EdgeInsets.zero,
+                          tooltip: 'Volver',
+                          onPressed: () => Navigator.of(context).pop(),
                         ),
                       ),
-
-                      const SizedBox(height: 16),
-
-                      Autocomplete<Map<String, dynamic>>(
-                        optionsBuilder: (TextEditingValue textEditingValue) {
-                          if (textEditingValue.text == '') {
-                            return const Iterable<Map<String, dynamic>>.empty();
-                          }
-
-                          return users.where((dynamic option) {
-                            return option['usuario']
-                                .toString()
-                                .toLowerCase()
-                                .contains(textEditingValue.text.toLowerCase());
-                          }).cast<Map<String, dynamic>>();
-                        },
-
-                        displayStringForOption:
-                            (Map<String, dynamic> option) => option['usuario'],
-
-                        onSelected: (Map<String, dynamic> selection) {
-                          setState(() {
-                            selectedUser = selection;
-
-                            FocusScope.of(context).unfocus(); // Ocultar teclado
-                          });
-
-                          refreshUserFiles(selection['usuario']);
-
-                          fetchUserLogs(selection['usuario']);
-                        },
-
-                        fieldViewBuilder: (
-                          context,
-
-                          textEditingController,
-
-                          focusNode,
-
-                          onFieldSubmitted,
-                        ) {
-                          return TextField(
-                            controller: textEditingController,
-
-                            focusNode:
-                                focusNode, // Usar el nodo del Autocomplete para que funcione la lista
-
-                            onTap: () {
-                              textEditingController.clear();
-
-                              setState(() {
-                                selectedUser = null;
-
-                                userLogs = [];
-                              });
-                            },
-
-                            onChanged: (value) {
-                              if (value.isEmpty) {
-                                setState(() => selectedUser = null);
-
-                                setState(() => userLogs = []);
-                              }
-                            },
-
-                            style: TextStyle(
-                              color:
-                                  Theme.of(context).textTheme.bodyLarge?.color,
-                            ),
-
-                            decoration: InputDecoration(
-                              hintText:
-                                  isLoading
-                                      ? 'Cargando usuarios...'
-                                      : 'Nombre de usuario...',
-
-                              hintStyle: TextStyle(
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).textTheme.bodyMedium?.color,
-                              ),
-
-                              prefixIcon: Icon(
-                                Icons.person_rounded,
-
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).textTheme.bodyMedium?.color,
-                              ),
-
-                              filled: true,
-
-                              fillColor:
-                                  Theme.of(context).scaffoldBackgroundColor,
-
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-
-                                borderSide: BorderSide.none,
-                              ),
-
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-
-                                borderSide: const BorderSide(
-                                  color: AppTheme.primaryBlue,
-
-                                  width: 1,
-                                ),
-                              ),
-                            ),
-
-                            onSubmitted: (String value) {
-                              if (value.isEmpty) return;
-
-                              final normalizedValue = value.toLowerCase();
-
-                              // Buscar coincidencias en la lista de usuarios
-
-                              final matches =
-                                  users.where((user) {
-                                    return user['usuario']
-                                        .toString()
-                                        .toLowerCase()
-                                        .contains(normalizedValue);
-                                  }).toList();
-
-                              if (matches.isNotEmpty) {
-                                // Seleccionar el primer resultado (predicción)
-
-                                final selection = matches.first;
-
-                                setState(() {
-                                  selectedUser = selection;
-                                });
-
-                                FocusScope.of(
-                                  context,
-                                ).unfocus(); // Ocultar teclado
-
-                                textEditingController.text =
-                                    selection['usuario'];
-
-                                refreshUserFiles(selection['usuario']);
-
-                                fetchUserLogs(selection['usuario']);
-
-                                // Si el texto ya coincidía exactamente, navegar a detalles
-
-                                if (selection['usuario']
-                                        .toString()
-                                        .toLowerCase() ==
-                                    normalizedValue) {
-                                  navigateToUserDetail();
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return Autocomplete<Map<String, dynamic>>(
+                              optionsBuilder: (
+                                TextEditingValue textEditingValue,
+                              ) {
+                                if (textEditingValue.text == '') {
+                                  return const Iterable<
+                                    Map<String, dynamic>
+                                  >.empty();
                                 }
-                              }
-                            },
-                          );
-                        },
-
-                        optionsViewBuilder: (context, onSelected, options) {
-                          return Align(
-                            alignment: Alignment.topLeft,
-
-                            child: Material(
-                              elevation: 4.0,
-
-                              color: Theme.of(context).cardColor,
-
-                              borderRadius: BorderRadius.circular(12),
-
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxHeight: 200,
-
-                                  maxWidth: 300,
-                                ),
-
-                                child: ListView.builder(
-                                  padding: EdgeInsets.zero,
-
-                                  shrinkWrap: true,
-
-                                  itemCount: options.length,
-
-                                  itemBuilder: (
-                                    BuildContext context,
-
-                                    int index,
-                                  ) {
-                                    final option = options.elementAt(index);
-
-                                    return ListTile(
-                                      title: Text(
-                                        option['usuario'],
-
-                                        style: TextStyle(
-                                          color:
-                                              Theme.of(
-                                                context,
-                                              ).textTheme.bodyLarge?.color,
-                                        ),
-                                      ),
-
-                                      onTap: () {
-                                        onSelected(option);
-                                      },
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      SizedBox(
-                        width: double.infinity,
-
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryBlue,
-
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-
-                          onPressed:
-                              (selectedUser != null &&
-                                      (selectedUser!['archivos']['status'] ==
-                                              'ok' ||
-                                          selectedUser!['archivos']['status'] ==
-                                              'calculating'))
-                                  ? navigateToUserDetail
-                                  : null,
-
-                          child:
-                              (selectedUser != null &&
-                                      selectedUser!['archivos']['status'] ==
-                                          'cargando')
-                                  ? Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-
-                                    children: [
-                                      const SizedBox(
-                                        width: 20,
-
-                                        height: 20,
-
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white,
-
-                                          strokeWidth: 2,
-                                        ),
-                                      ),
-
-                                      const SizedBox(width: 12),
-
-                                      const Text(
-                                        'Cargando Detalles...',
-
-                                        style: TextStyle(
-                                          color: Colors.white,
-
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  )
-                                  : const Text(
-                                    'Ver Detalles de Usuario',
-
-                                    style: TextStyle(
-                                      color: Colors.white,
-
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // SERVICIOS
-                Text(
-                  'Cantidad de Paquetes',
-
-                  style: TextStyle(
-                    fontSize: 14,
-
-                    fontWeight: FontWeight.bold,
-
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
-
-                    letterSpacing: 1.0,
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                if (selectedUser != null)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-
-                    decoration: AppTheme.cardDecoration(context),
-
-                    clipBehavior: Clip.antiAlias,
-
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(16),
-
-                          decoration: BoxDecoration(
-                            border: Border(
-                              bottom: BorderSide(color: AppTheme.borderColor),
-                            ),
-                          ),
-
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(
-                                        context,
-                                      ).dividerColor.withOpacity(0.1),
-
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-
-                                    child: const Icon(
-                                      Icons.arrow_downward_rounded,
-
-                                      color: AppTheme.successGreen,
-
-                                      size: 16,
-                                    ),
-                                  ),
-
-                                  const SizedBox(width: 12),
-
-                                  Text(
-                                    'Cola de Entrada Global',
-
-                                    style: TextStyle(
-                                      color:
-                                          Theme.of(
-                                            context,
-                                          ).textTheme.bodyMedium?.color,
-
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              Row(
-                                children: [
-                                  Text(
-                                    '${selectedUser!['archivos']['input']} ',
-
-                                    style: TextStyle(
-                                      color:
-                                          Theme.of(
-                                            context,
-                                          ).textTheme.titleLarge?.color,
-
-                                      fontWeight: FontWeight.bold,
-
-                                      fontSize: 18,
-                                    ),
-                                  ),
-
-                                  if (selectedUser!['archivos']['status'] ==
-                                      'cargando')
-                                    const SizedBox(
-                                      width: 16,
-
-                                      height: 16,
-
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  else if (selectedUser!['archivos']['status'] ==
-                                          'ok' ||
-                                      selectedUser!['archivos']['status'] ==
-                                          'calculating')
-                                    const Icon(
-                                      Icons.check_circle_rounded,
-
-                                      color: AppTheme.successGreen,
-
-                                      size: 20,
-                                    )
-                                  else
-                                    const Icon(
-                                      Icons.error_outline_rounded,
-
-                                      color: AppTheme.errorRed,
-
-                                      size: 20,
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        Container(
-                          padding: const EdgeInsets.all(16),
-
-                          color: AppTheme.bgCard.withOpacity(0.5),
-
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(
-                                        context,
-                                      ).dividerColor.withOpacity(0.1),
-
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-
-                                    child: const Icon(
-                                      Icons.arrow_upward_rounded,
-
-                                      color: AppTheme.primaryBlue,
-
-                                      size: 16,
-                                    ),
-                                  ),
-
-                                  const SizedBox(width: 12),
-
-                                  Text(
-                                    'Colas de Salida Totales',
-
-                                    style: TextStyle(
-                                      color:
-                                          Theme.of(
-                                            context,
-                                          ).textTheme.bodyMedium?.color,
-
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-
-                                  vertical: 4,
-                                ),
-
-                                decoration: BoxDecoration(
-                                  color: Theme.of(
-                                    context,
-                                  ).dividerColor.withOpacity(0.1),
-
-                                  borderRadius: BorderRadius.circular(20),
-
-                                  border: Border.all(
-                                    color: Theme.of(context).dividerColor,
-                                  ),
-                                ),
-
-                                child: Text(
-                                  '${(selectedUser!['archivos']['output'] as Map).length} destinos',
-
+                                return users.where((dynamic option) {
+                                  return option['usuario']
+                                      .toString()
+                                      .toLowerCase()
+                                      .contains(
+                                        textEditingValue.text.toLowerCase(),
+                                      );
+                                }).cast<Map<String, dynamic>>();
+                              },
+                              displayStringForOption:
+                                  (Map<String, dynamic> option) =>
+                                      option['usuario'],
+                              onSelected: _onUserSelected,
+                              fieldViewBuilder: (
+                                context,
+                                textEditingController,
+                                focusNode,
+                                onFieldSubmitted,
+                              ) {
+                                _searchController = textEditingController;
+                                return TextField(
+                                  controller: textEditingController,
+                                  focusNode: focusNode,
+                                  autofocus: true,
                                   style: TextStyle(
                                     color:
                                         Theme.of(
                                           context,
-                                        ).textTheme.bodyMedium?.color,
-
-                                    fontWeight: FontWeight.bold,
-
-                                    fontSize: 12,
+                                        ).textTheme.bodyLarge?.color,
+                                    fontSize: 14,
                                   ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  Text(
-                    'Seleccione un usuario para ver la información.',
-
-                    style: TextStyle(
-                      color: Theme.of(context).textTheme.bodyMedium?.color,
-                    ),
-                  ),
-
-                const SizedBox(height: 24),
-
-                // CONSOLA DE LOGS
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-                  children: [
-                    Text(
-                      selectedUser != null
-                          ? 'LOGS ${selectedUser!['usuario']}'
-                          : 'CONSOLA / LOGS EN VIVO',
-
-                      style: TextStyle(
-                        fontSize: 14,
-
-                        fontWeight: FontWeight.bold,
-
-                        color: Theme.of(context).textTheme.bodyMedium?.color,
-
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-
-                    TextButton.icon(
-                      onPressed: () {
-                        if (userLogs.isNotEmpty) {
-                          Clipboard.setData(
-                            ClipboardData(text: userLogs.join('\n')),
-                          );
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Logs copiados al portapapeles'),
-
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                      },
-
-                      icon: const Icon(Icons.copy_all_rounded, size: 14),
-
-                      label: const Text(
-                        'Copiar',
-
-                        style: TextStyle(fontSize: 12),
-                      ),
-
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppTheme.primaryBlue,
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 8),
-
-                Container(
-                  width: double.infinity,
-
-                  padding: const EdgeInsets.all(16),
-
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0D1117), // Fondo terminal más oscuro
-
-                    borderRadius: BorderRadius.circular(16),
-
-                    border: Border.all(color: AppTheme.borderColor),
-                  ),
-
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-
-                    children:
-                        selectedUser != null
-                            ? (loadingLogs
-                                ? [
-                                  const Center(
-                                    child: CircularProgressIndicator(),
-                                  ),
-                                ]
-                                : userLogs.isEmpty
-                                ? [
-                                  Text(
-                                    'No hay logs recientes.',
-
-                                    style: TextStyle(
+                                  decoration: InputDecoration(
+                                    hintText:
+                                        isLoading
+                                            ? 'Cargando usuarios...'
+                                            : 'Buscar en ${widget.server.name}...',
+                                    hintStyle: TextStyle(
+                                      color:
+                                          Theme.of(
+                                            context,
+                                          ).textTheme.bodyMedium?.color,
+                                      fontSize: 14,
+                                    ),
+                                    prefixIcon: Icon(
+                                      Icons.search_rounded,
+                                      size: 20,
                                       color:
                                           Theme.of(
                                             context,
                                           ).textTheme.bodyMedium?.color,
                                     ),
-                                  ),
-                                ]
-                                : userLogs
-                                    .map(
-                                      (line) => Text(
-                                        line,
-
-                                        style: AppTheme.monoStyle.copyWith(
-                                          fontSize: 12,
-
-                                          color: AppTheme.textMain,
-                                        ),
+                                    suffixIcon:
+                                        textEditingController.text.isNotEmpty
+                                            ? IconButton(
+                                              icon: Icon(
+                                                Icons.close,
+                                                size: 18,
+                                                color:
+                                                    Theme.of(context)
+                                                        .textTheme
+                                                        .bodyMedium
+                                                        ?.color,
+                                              ),
+                                              onPressed: () {
+                                                textEditingController.clear();
+                                                setState(() {
+                                                  selectedUser = null;
+                                                  _detailedUser = null;
+                                                });
+                                              },
+                                            )
+                                            : null,
+                                    filled: true,
+                                    fillColor: Theme.of(context).cardColor,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      vertical: 0,
+                                      horizontal: 16,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: const BorderSide(
+                                        color: AppTheme.primaryBlue,
+                                        width: 1.5,
                                       ),
-                                    )
-                                    .toList())
-                            : widget.server.logs
-                                .map(
-                                  (log) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 8.0),
-
-                                    child: RichText(
-                                      text: TextSpan(
-                                        style: AppTheme.monoStyle.copyWith(
-                                          fontSize: 12,
+                                    ),
+                                  ),
+                                  onSubmitted: (String value) {
+                                    if (value.isEmpty) return;
+                                    final normalizedValue = value.toLowerCase();
+                                    final matches =
+                                        users.where((user) {
+                                          return user['usuario']
+                                              .toString()
+                                              .toLowerCase()
+                                              .contains(normalizedValue);
+                                        }).toList();
+                                    if (matches.isNotEmpty) {
+                                      _onUserSelected(matches.first);
+                                    }
+                                  },
+                                );
+                              },
+                              optionsViewBuilder: (
+                                context,
+                                onSelected,
+                                options,
+                              ) {
+                                return Align(
+                                  alignment: Alignment.topLeft,
+                                  child: Material(
+                                    elevation: 8.0,
+                                    color: Theme.of(context).cardColor,
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        maxHeight: 300,
+                                        maxWidth: constraints.maxWidth,
+                                      ),
+                                      child: ListView.separated(
+                                        padding: EdgeInsets.zero,
+                                        shrinkWrap: true,
+                                        itemCount: options.length,
+                                        separatorBuilder:
+                                            (context, index) => Divider(
+                                              height: 1,
+                                              color: Theme.of(
+                                                context,
+                                              ).dividerColor.withOpacity(0.1),
+                                            ),
+                                        itemBuilder: (
+                                          BuildContext context,
+                                          int index,
+                                        ) {
+                                          final option = options.elementAt(
+                                            index,
+                                          );
+                                          return ListTile(
+                                            dense: true,
+                                            leading: const Icon(
+                                              Icons.person_outline_rounded,
+                                              size: 18,
+                                            ),
+                                            title: Text(
+                                              option['usuario'],
+                                              style: TextStyle(
+                                                color:
+                                                    Theme.of(context)
+                                                        .textTheme
+                                                        .bodyLarge
+                                                        ?.color,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                            onTap: () => onSelected(option),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  if (selectedUser != null)
+                    Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Theme.of(context).cardColor,
+                                Theme.of(context).scaffoldBackgroundColor,
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: Theme.of(context).dividerColor,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Theme.of(
+                                  context,
+                                ).shadowColor.withOpacity(0.1),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      selectedUser!['usuario'],
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).textTheme.titleLarge?.color,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.dns_rounded,
+                                          size: 14,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
                                         ),
-
-                                        children: [
-                                          TextSpan(
-                                            text: '[${log.time}] ',
-
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            'Alojado en ${widget.server.name}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                             style: TextStyle(
+                                              fontSize: 12,
                                               color:
                                                   Theme.of(
                                                     context,
                                                   ).textTheme.bodyMedium?.color,
                                             ),
                                           ),
-
-                                          TextSpan(
-                                            text: '${log.type.toUpperCase()}: ',
-
-                                            style: TextStyle(
-                                              color:
-                                                  log.type == 'error'
-                                                      ? AppTheme.errorRed
-                                                      : log.type == 'warn'
-                                                      ? AppTheme.warningAmber
-                                                      : AppTheme.successGreen,
-
-                                              fontWeight: FontWeight.bold,
-                                            ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              IntrinsicWidth(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    InkWell(
+                                      onTap:
+                                          () => handleRestartService(
+                                            selectedUser!,
                                           ),
-
-                                          TextSpan(
-                                            text: log.msg,
-
-                                            style: TextStyle(
-                                              color: AppTheme.textMain,
-                                            ),
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 6,
+                                          horizontal: 16,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.errorRed.withOpacity(
+                                            0.1,
                                           ),
-                                        ],
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          border: Border.all(
+                                            color: AppTheme.errorRed
+                                                .withOpacity(0.3),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(
+                                              Icons.restart_alt_rounded,
+                                              size: 14,
+                                              color: AppTheme.errorRed,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            const Text(
+                                              'REINICIAR',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                                color: AppTheme.errorRed,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        if (selectedUser!['tipo_instalacion'] ==
+                                                'server_node' ||
+                                            selectedUser!['tipo_instalacion'] ==
+                                                'server')
+                                          Expanded(
+                                            child: Container(
+                                              alignment: Alignment.center,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 2,
+                                                    vertical: 3,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: AppTheme.primaryBlue
+                                                    .withOpacity(0.1),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: AppTheme.primaryBlue
+                                                      .withOpacity(0.3),
+                                                ),
+                                              ),
+                                              child: const Text(
+                                                'SERVER',
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: AppTheme.primaryBlue,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        if (selectedUser!['tipo_instalacion'] ==
+                                            'server_node')
+                                          const SizedBox(width: 6),
+                                        if (selectedUser!['tipo_instalacion'] ==
+                                                'server_node' ||
+                                            selectedUser!['tipo_instalacion'] ==
+                                                'node')
+                                          Expanded(
+                                            child: Container(
+                                              alignment: Alignment.center,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 2,
+                                                    vertical: 3,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: AppTheme.successGreen
+                                                    .withOpacity(0.1),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: AppTheme.successGreen
+                                                      .withOpacity(0.3),
+                                                ),
+                                              ),
+                                              child: const Text(
+                                                'NODE',
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: AppTheme.successGreen,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          decoration: AppTheme.cardDecoration(context),
+                          clipBehavior: Clip.antiAlias,
+                          child: Column(
+                            children: [
+                              InkWell(
+                                onTap:
+                                    _detailedUser != null
+                                        ? () => setState(
+                                          () =>
+                                              _isUserDetailExpanded =
+                                                  !_isUserDetailExpanded,
+                                        )
+                                        : null,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 16,
                                   ),
-                                )
-                                .toList(),
-                  ),
-                ),
-              ],
+                                  color: Theme.of(
+                                    context,
+                                  ).scaffoldBackgroundColor.withOpacity(0.5),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(
+                                            context,
+                                          ).dividerColor.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          _detailedUser != null
+                                              ? Icons.analytics_rounded
+                                              : Icons.arrow_upward_rounded,
+                                          color: AppTheme.primaryBlue,
+                                          size: 16,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        _detailedUser != null
+                                            ? 'Monitorización y Logs'
+                                            : 'Cola de salida',
+                                        style: TextStyle(
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      if (_detailedUser != null)
+                                        InkWell(
+                                          onTap: () {
+                                            _userDetailKey.currentState
+                                                ?.refreshData();
+                                          },
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 6,
+                                              horizontal: 16,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(
+                                                context,
+                                              ).dividerColor.withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              border: Border.all(
+                                                color:
+                                                    Theme.of(
+                                                      context,
+                                                    ).dividerColor,
+                                              ),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.refresh_rounded,
+                                                  size: 14,
+                                                  color:
+                                                      Theme.of(context)
+                                                          .textTheme
+                                                          .bodyMedium
+                                                          ?.color,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  'RECARGAR',
+                                                  style: TextStyle(
+                                                    color:
+                                                        Theme.of(context)
+                                                            .textTheme
+                                                            .bodyMedium
+                                                            ?.color,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 10,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              AnimatedSize(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.fastOutSlowIn,
+                                child: Visibility(
+                                  visible:
+                                      _isUserDetailExpanded &&
+                                      _detailedUser != null,
+                                  maintainState: true,
+                                  child:
+                                      _detailedUser != null
+                                          ? UserDetailContent(
+                                            key: _userDetailKey,
+                                            username: _detailedUser!['usuario'],
+                                            serverName: widget.server.name,
+                                            apiUrl: widget.server.apiUrl,
+                                            userData: _detailedUser!,
+                                          )
+                                          : const SizedBox.shrink(),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 40),
+                        child: Text(
+                          'Busque un usuario en la barra superior para comenzar.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color?.withOpacity(0.5),
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 24),
+                ],
+              ),
             ),
           ),
         ),
@@ -2575,10 +2485,10 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
 // ==========================================
 
 // PANTALLA DETALLES DEL USUARIO
-
+// (Ahora un Widget embebible)
 // ==========================================
 
-class UserDetailScreen extends StatefulWidget {
+class UserDetailContent extends StatefulWidget {
   final String username;
 
   final String serverName;
@@ -2587,7 +2497,7 @@ class UserDetailScreen extends StatefulWidget {
 
   final Map<String, dynamic> userData;
 
-  const UserDetailScreen({
+  const UserDetailContent({
     super.key,
 
     required this.username,
@@ -2600,32 +2510,69 @@ class UserDetailScreen extends StatefulWidget {
   });
 
   @override
-  State<UserDetailScreen> createState() => _UserDetailScreenState();
+  State<UserDetailContent> createState() => UserDetailContentState();
 }
 
-class _UserDetailScreenState extends State<UserDetailScreen> {
+class UserDetailContentState extends State<UserDetailContent> {
   late Map<String, dynamic> currentUserData;
 
   Timer? pollingTimer;
 
+  // Estado para los logs
+  List<String> userLogs = [];
+
+  bool loadingLogs = true;
+
+  bool _isOutputExpanded = false;
+
   @override
   void initState() {
     super.initState();
+    currentUserData = Map<String, dynamic>.from(widget.userData);
+    _checkAndStartPolling();
+    // Cargar los logs al iniciar la pantalla
+    fetchUserLogs();
+  }
 
-    currentUserData = widget.userData;
+  @override
+  void didUpdateWidget(UserDetailContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
 
-    // Verificar si hay elementos pendientes (-1) o si el estado es 'calculating'
+    // Si el usuario cambia, reiniciamos el estado (necesario por usar GlobalKey)
+    if (widget.username != oldWidget.username) {
+      setState(() {
+        currentUserData = Map<String, dynamic>.from(widget.userData);
+        userLogs = [];
+        loadingLogs = true;
+      });
+      fetchUserLogs();
+      _checkAndStartPolling();
+      return;
+    }
 
+    // Si recibimos nuevos datos del padre (ej: post-carga inicial), actualizamos la copia local y verificamos si hay que sondear
+    if (widget.userData['archivos'] != currentUserData['archivos']) {
+      setState(() {
+        currentUserData = Map<String, dynamic>.from(widget.userData);
+      });
+      _checkAndStartPolling();
+    }
+  }
+
+  void _checkAndStartPolling() {
     bool hasPending = false;
-
-    if (currentUserData['archivos']['output'] is Map) {
+    if (currentUserData['archivos'] is Map &&
+        currentUserData['archivos']['output'] is Map) {
       final outputs = currentUserData['archivos']['output'] as Map;
-
       hasPending = outputs.values.any((val) => val.toString() == '-1');
     }
 
-    if (currentUserData['archivos']['status'] == 'calculating' || hasPending) {
-      startPolling();
+    if ((currentUserData['archivos'] is Map &&
+            currentUserData['archivos']['status'] == 'calculating') ||
+        hasPending) {
+      if (pollingTimer == null || !pollingTimer!.isActive) {
+        startPolling();
+      }
     }
   }
 
@@ -2673,6 +2620,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
   // Método para refrescar manualmente dentro de la pantalla
 
   Future<void> refreshData() async {
+    fetchUserLogs(); // También recargamos los logs
     // Reinicia el conteo en el servidor (POST)
 
     try {
@@ -2704,128 +2652,50 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
     }
   }
 
-  Future<void> handleRestartService() async {
-    final String type = widget.userData['tipo_instalacion'] ?? 'server';
+  Future<void> fetchUserLogs() async {
+    if (!mounted) return;
+    setState(() {
+      loadingLogs = true;
+      userLogs = [];
+    });
 
-    String title = 'Reiniciar Servicio';
-
-    String content = '';
-
-    if (type == 'server_node') {
-      content =
-          'Se reiniciarán los servicios:\n- petroboxreplicatorserver\n- petroboxreplicatornode\n\n¿Estás seguro?';
-    } else if (type == 'node') {
-      content =
-          'Se reiniciará el servicio:\n- petroboxreplicatornode\n\n¿Estás seguro?';
-    } else {
-      content =
-          'Se reiniciará el servicio:\n- petroboxreplicatorserver\n\n¿Estás seguro?';
-    }
-
-    final bool? confirm = await showDialog<bool>(
-      context: context,
-
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: Theme.of(context).cardColor,
-
-            title: Row(
-              children: [
-                const Icon(
-                  Icons.warning_amber_rounded,
-
-                  color: AppTheme.warningAmber,
-                ),
-
-                const SizedBox(width: 10),
-
-                Text(
-                  title,
-
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.titleLarge?.color,
-                  ),
-                ),
-              ],
-            ),
-
-            content: Text(
-              content,
-
-              style: TextStyle(
-                color: Theme.of(context).textTheme.bodyMedium?.color,
-              ),
-            ),
-
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-
-                child: const Text('Cancelar'),
-              ),
-
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.errorRed,
-                ),
-
-                onPressed: () => Navigator.pop(context, true),
-
-                child: const Text(
-                  'Reiniciar',
-
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-    );
-
-    if (confirm == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Enviando orden de reinicio...'),
-
-          backgroundColor: AppTheme.primaryBlue,
-        ),
-      );
-
-      try {
-        final url = '${widget.apiUrl}/${widget.username}/reiniciar-servicios';
-
-        final response = await http.post(Uri.parse(url));
-
-        if (mounted) {
-          if (response.statusCode == 200) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Servicios reiniciados correctamente.'),
-
-                backgroundColor: AppTheme.successGreen,
-              ),
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Error al reiniciar: ${response.body}'),
-
-                backgroundColor: AppTheme.errorRed,
-              ),
-            );
+    try {
+      final url = '${widget.apiUrl}/${widget.username}/logs';
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is Map && data.containsKey('logs')) {
+          if (mounted) {
+            setState(() => userLogs = List<String>.from(data['logs']));
           }
         }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error de conexión: $e'),
-
-              backgroundColor: AppTheme.errorRed,
-            ),
-          );
-        }
       }
+    } catch (e) {
+      debugPrint('Error fetching user logs: $e');
+      if (mounted) {
+        setState(() => userLogs = ['Error al obtener logs: $e']);
+      }
+    } finally {
+      if (mounted) setState(() => loadingLogs = false);
     }
+  }
+
+  void copyLogsToClipboard() {
+    if (userLogs.isEmpty) return;
+    Clipboard.setData(ClipboardData(text: userLogs.join('\n')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          'Logs copiados al portapapeles',
+          textAlign: TextAlign.center,
+        ),
+        behavior: SnackBarBehavior.floating,
+        width: 260,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(50)),
+        backgroundColor: Theme.of(context).colorScheme.inverseSurface,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
@@ -2843,454 +2713,284 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
 
     final List<String> sortedKeys = outputs.keys.toList()..sort();
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+    // Calcular suma total de paquetes de salida
+    int totalOutputPackages = 0;
+    for (var val in outputs.values) {
+      // Convertir a int, ignorando -1 (calculando) o errores
+      int v = int.tryParse(val.toString()) ?? 0;
+      if (v > 0) totalOutputPackages += v;
+    }
 
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
+    return Container(
+      color: Theme.of(context).cardColor,
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
 
-        elevation: 0,
-
-        iconTheme: IconThemeData(color: Theme.of(context).iconTheme.color),
-
-        title: Text(
-          'Perfil de Usuario',
-
-          style: TextStyle(
-            color: Theme.of(context).textTheme.titleLarge?.color, // Dynamic
-
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1000),
-
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-
+        children: [
+          // TARJETAS DE PAQUETES
+          // 1. INPUT (Paquetes Recibidos)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            decoration: AppTheme.cardDecoration(context),
+            child: Row(
               children: [
-                // CABECERA USUARIO
-                Container(
-                  padding: const EdgeInsets.all(24),
-
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppTheme.bgCard, Color(0xFF1E293B)],
-
-                      begin: Alignment.topLeft,
-
-                      end: Alignment.bottomRight,
+                const Icon(
+                  Icons.arrow_downward_rounded,
+                  size: 20,
+                  color: AppTheme.successGreen,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Paquetes Recibidos',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
                     ),
-
-                    borderRadius: BorderRadius.circular(24),
-
-                    border: Border.all(color: AppTheme.borderColor),
-
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-
-                        blurRadius: 10,
-
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
                   ),
+                ),
+                Text(
+                  '$inQueue paquetes',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color:
+                        inQueue > 0
+                            ? AppTheme.successGreen
+                            : Theme.of(context).textTheme.bodyMedium?.color,
+                  ),
+                ),
+              ],
+            ),
+          ),
 
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 50,
-                        height: 50,
+          const SizedBox(height: 12),
 
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryBlue,
-                          borderRadius: BorderRadius.circular(16),
-
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppTheme.primaryBlue.withOpacity(0.3),
-
-                              blurRadius: 10,
-
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-
-                        child: Center(
-                          child: Icon(
-                            Icons.person_rounded,
-                            color: Colors.white,
-                            size: 28,
-                          ),
-                        ),
+          // 2. OUTPUT (Paquetes Salida - Expandible)
+          InkWell(
+            onTap: () => setState(() => _isOutputExpanded = !_isOutputExpanded),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              decoration: AppTheme.cardDecoration(context),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.arrow_upward_rounded,
+                    size: 20,
+                    color: AppTheme.errorRed,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Paquetes Salida',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
                       ),
+                    ),
+                  ),
+                  Text(
+                    '$totalOutputPackages paquetes',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color:
+                          totalOutputPackages > 0
+                              ? AppTheme.primaryBlue
+                              : Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
 
-                      const SizedBox(width: 20),
-
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-
-                          children: [
-                            Text(
-                              widget.username,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                // Mantener blanco porque el fondo es oscuro (gradient)
-                                fontSize: 18,
-
-                                fontWeight: FontWeight.bold,
-
-                                color:
-                                    Colors
-                                        .white, // Forzado a blanco por el fondo oscuro
-                              ),
-                            ),
-
-                            const SizedBox(height: 4),
-
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.dns_rounded,
-
-                                  size: 16,
-
+          // Lista detallada de outputs (Solo visible al expandir)
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.fastOutSlowIn,
+            child:
+                _isOutputExpanded
+                    ? Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Column(
+                        children: [
+                          if (outputs.isNotEmpty)
+                            ...sortedKeys.map((key) {
+                              String displayName = key;
+                              final value = outputs[key];
+                              if (displayName.contains('/')) {
+                                displayName = displayName.split('/').last;
+                              }
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8.0),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(
+                                      context,
+                                    ).scaffoldBackgroundColor.withOpacity(0.5),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: Theme.of(
+                                        context,
+                                      ).dividerColor.withOpacity(0.5),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.subdirectory_arrow_right_rounded,
+                                        size: 16,
+                                        color: Theme.of(context).dividerColor,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          displayName,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color:
+                                                Theme.of(
+                                                  context,
+                                                ).textTheme.bodyLarge?.color,
+                                          ),
+                                        ),
+                                      ),
+                                      if (value.toString() == '-1')
+                                        const SizedBox(
+                                          width: 12,
+                                          height: 12,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      else
+                                        Text(
+                                          '$value',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color:
+                                                (int.tryParse(
+                                                              value.toString(),
+                                                            ) ??
+                                                            0) >
+                                                        0
+                                                    ? AppTheme.primaryBlue
+                                                    : Theme.of(context)
+                                                        .textTheme
+                                                        .bodyMedium
+                                                        ?.color,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            })
+                          else
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Text(
+                                "No hay colas de salida configuradas.",
+                                style: TextStyle(
                                   color:
                                       Theme.of(
                                         context,
                                       ).textTheme.bodyMedium?.color,
+                                  fontStyle: FontStyle.italic,
                                 ),
-
-                                const SizedBox(width: 4),
-
-                                Text(
-                                  'Alojado en ${widget.serverName}',
-
-                                  style: TextStyle(
-                                    color:
-                                        Theme.of(
-                                          context,
-                                        ).textTheme.bodyMedium?.color,
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
-                          ],
-                        ),
-                      ),
-
-                      Container(
-                        decoration: BoxDecoration(
-                          color: AppTheme.errorRed.withOpacity(0.1),
-
-                          borderRadius: BorderRadius.circular(12),
-
-                          border: Border.all(
-                            color: AppTheme.errorRed.withOpacity(0.3),
-                          ),
-                        ),
-
-                        child: IconButton(
-                          icon: const Icon(Icons.restart_alt_rounded),
-
-                          color: AppTheme.errorRed,
-
-                          tooltip: 'Reiniciar Servicios Replicator',
-
-                          onPressed: handleRestartService,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 32),
-
-                // TARJETAS DE PAQUETES
-
-                // Input
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-                  children: [
-                    Text(
-                      'COLA DE ENTRADA (INPUT)',
-
-                      style: TextStyle(
-                        fontSize: 14,
-
-                        fontWeight: FontWeight.bold,
-
-                        color: Theme.of(context).textTheme.bodyMedium?.color,
-
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-
-                    IconButton(
-                      onPressed: refreshData,
-
-                      icon: Icon(
-                        Icons.refresh_rounded,
-
-                        color: Theme.of(context).textTheme.bodyMedium?.color,
-
-                        size: 18,
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 12),
-
-                buildQueueCard(
-                  context,
-
-                  'Paquetes Recibidos',
-
-                  inQueue.toString(),
-
-                  AppTheme.successGreen,
-
-                  Icons.arrow_downward_rounded,
-
-                  isInput: true,
-                ),
-
-                const SizedBox(height: 24),
-
-                Text(
-                  'Colas de Salida (${outputs.length})',
-
-                  style: TextStyle(
-                    fontSize: 14,
-
-                    fontWeight: FontWeight.bold,
-
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
-
-                    letterSpacing: 1.0,
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                ...sortedKeys.map((key) {
-                  // Limpiar nombre para mostrar (quitar GUID si es muy largo o dejarlo como referencia)
-
-                  // Mostramos la clave completa o la última parte si tiene '/'
-
-                  String displayName = key;
-
-                  final value = outputs[key];
-
-                  if (displayName.contains('/')) {
-                    displayName = displayName.split('/').last;
-                  }
-
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12.0),
-
-                    child: buildQueueCard(
-                      context,
-
-                      displayName,
-
-                      value.toString(),
-
-                      AppTheme.primaryBlue,
-
-                      Icons.arrow_upward_rounded,
-                    ),
-                  );
-                }),
-
-                if (outputs.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-
-                    child: Text(
-                      "No hay colas de salida configuradas.",
-
-                      style: TextStyle(
-                        color: Theme.of(context).textTheme.bodyMedium?.color,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget buildQueueCard(
-    BuildContext context,
-
-    String title,
-
-    String count,
-
-    Color color,
-
-    IconData icon, {
-
-    bool isInput = false,
-  }) {
-    final int countVal = int.tryParse(count) ?? 0;
-
-    final bool isLoading = countVal == -1; // -1 indica cargando
-
-    final bool hasTraffic = countVal > 0;
-
-    final Color activeColor =
-        hasTraffic
-            ? (isInput ? AppTheme.successGreen : AppTheme.errorRed)
-            : (Theme.of(context).textTheme.bodyMedium?.color ?? Colors.grey);
-
-    final Color bgIcon =
-        (hasTraffic || isLoading)
-            ? activeColor.withOpacity(0.1)
-            : Theme.of(context).scaffoldBackgroundColor;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-
-      decoration: AppTheme.cardDecoration(context),
-
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-
-            decoration: BoxDecoration(
-              color: bgIcon,
-
-              borderRadius: BorderRadius.circular(16),
-
-              border: Border.all(
-                color:
-                    (hasTraffic || isLoading)
-                        ? activeColor.withOpacity(0.2)
-                        : Colors.transparent,
-              ),
-            ),
-
-            child:
-                isLoading
-                    ? SizedBox(
-                      width: 20,
-                      height: 20,
-
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-
-                        color: AppTheme.primaryBlue,
+                        ],
                       ),
                     )
-                    : Icon(
-                      icon,
-
-                      color:
-                          hasTraffic
-                              ? activeColor
-                              : (Theme.of(
-                                    context,
-                                  ).textTheme.bodyMedium?.color ??
-                                  Colors.grey),
-
-                      size: 20,
-                    ),
+                    : const SizedBox.shrink(),
           ),
 
-          const SizedBox(width: 20),
+          const SizedBox(height: 24),
 
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-
-              children: [
-                Text(
-                  title,
-
-                  style: AppTheme.monoStyle.copyWith(
-                    fontSize: 11,
-
-                    fontWeight: FontWeight.bold,
-
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
-                  ),
-                ),
-
-                const SizedBox(height: 4),
-
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-
-                  textBaseline: TextBaseline.alphabetic,
-
-                  children: [
-                    isLoading
-                        ? Text(
-                          "Cargando...",
-
+          // 3. CONSOLA DE LOGS (Tap para copiar)
+          GestureDetector(
+            onTap: copyLogsToClipboard,
+            child: Container(
+              width: double.infinity,
+              height: 250,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Theme.of(context).dividerColor),
+              ),
+              child:
+                  loadingLogs
+                      ? const Center(child: CircularProgressIndicator())
+                      : userLogs.isEmpty
+                      ? Center(
+                        child: Text(
+                          'No hay logs recientes.',
                           style: TextStyle(
-                            fontSize: 18,
-
                             color:
                                 Theme.of(context).textTheme.bodyMedium?.color,
-
-                            fontStyle: FontStyle.italic,
-                          ),
-                        )
-                        : Text(
-                          count,
-
-                          style: TextStyle(
-                            fontSize: 24,
-
-                            fontWeight: FontWeight.w300,
-
-                            color:
-                                Theme.of(context).textTheme.displaySmall?.color,
                           ),
                         ),
+                      )
+                      : Scrollbar(
+                        thumbVisibility: true,
+                        child: ListView.builder(
+                          itemCount: userLogs.length,
+                          itemBuilder: (context, index) {
+                            final line = userLogs[index];
+                            Color lineColor =
+                                Theme.of(context).textTheme.bodyMedium?.color ??
+                                Colors.grey;
+                            FontWeight fontWeight = FontWeight.normal;
 
-                    const SizedBox(width: 6),
+                            if (line.toLowerCase().contains('error')) {
+                              lineColor = AppTheme.errorRed;
+                            } else if (line.toLowerCase().contains('warn')) {
+                              lineColor = AppTheme.warningAmber;
+                            } else if (line.toLowerCase().startsWith('---')) {
+                              lineColor = AppTheme.primaryBlue;
+                              fontWeight = FontWeight.bold;
+                            }
 
-                    const Text(
-                      'paquetes',
-                      style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
-                    ),
-                  ],
-                ),
-              ],
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 4.0),
+                              child: Text(
+                                line,
+                                style: AppTheme.monoStyle.copyWith(
+                                  fontSize: 12,
+                                  color: lineColor,
+                                  fontWeight: fontWeight,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
             ),
           ),
-
-          if (isInput && countVal == 0)
-            const Text(
-              "Todo al día",
-
+          const SizedBox(height: 8),
+          Center(
+            child: Text(
+              "Toca el registro para copiar los logs",
               style: TextStyle(
-                color: AppTheme.successGreen,
-
-                fontSize: 12,
-
-                fontWeight: FontWeight.bold,
+                fontSize: 10,
+                color: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.color?.withOpacity(0.5),
               ),
             ),
+          ),
         ],
       ),
     );
