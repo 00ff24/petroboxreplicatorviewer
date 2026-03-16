@@ -795,36 +795,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                   // GRID DE SERVIDORES
                   Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.only(bottom: 20),
+                    child: RefreshIndicator(
+                      onRefresh: _refreshServers,
+                      color: AppTheme.primaryBlue,
+                      child: SingleChildScrollView(
+                        physics:
+                            const AlwaysScrollableScrollPhysics(), // Obligatorio para que funcione el pull-to-refresh
+                        padding: const EdgeInsets.only(bottom: 20),
 
-                      child: SizedBox(
-                        width: double.infinity,
+                        child: SizedBox(
+                          width: double.infinity,
 
-                        child: Wrap(
-                          alignment: WrapAlignment.center, // 3. Centrado
+                          child: Wrap(
+                            alignment: WrapAlignment.center, // 3. Centrado
 
-                          spacing: 16, // 4. Padding entre tarjetas igual
+                            spacing: 16, // 4. Padding entre tarjetas igual
 
-                          runSpacing: 16,
+                            runSpacing: 16,
 
-                          children:
-                              servers.map((server) {
-                                final bool isExpanded =
-                                    isMobile &&
-                                    _expandedCardIds.contains(server.id);
-                                return SizedBox(
-                                  width: cardWidth,
-                                  height: isMobile ? null : maxCardHeight,
-                                  child: buildServerCard(
-                                    context,
-                                    server,
-                                    maxIpLines,
-                                    isMobile,
-                                    isExpanded,
-                                  ),
-                                );
-                              }).toList(),
+                            children:
+                                servers.map((server) {
+                                  final bool isExpanded =
+                                      isMobile &&
+                                      _expandedCardIds.contains(server.id);
+                                  return SizedBox(
+                                    width: cardWidth,
+                                    height: isMobile ? null : maxCardHeight,
+                                    child: buildServerCard(
+                                      context,
+                                      server,
+                                      maxIpLines,
+                                      isMobile,
+                                      isExpanded,
+                                    ),
+                                  );
+                                }).toList(),
+                          ),
                         ),
                       ),
                     ),
