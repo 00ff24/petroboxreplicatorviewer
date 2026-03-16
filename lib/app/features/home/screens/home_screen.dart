@@ -200,7 +200,7 @@ class ServerManager {
 
     'http://frodo.petroboxinc.com:5001/usuarios',
 
-    'http://192.168.125.204:5001/usuarios',
+    'http://gandalf.petroboxinc.com:5001/usuarios',
   ];
 
   static Future<bool> hasCache() async {
