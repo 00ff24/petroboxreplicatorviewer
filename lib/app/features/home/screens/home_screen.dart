@@ -2956,6 +2956,8 @@ class UserDetailContentState extends State<UserDetailContent> {
 
                             if (line.toLowerCase().contains('error')) {
                               lineColor = AppTheme.errorRed;
+                            } else if (line.toLowerCase().contains('incoming file')) {
+                              lineColor = AppTheme.successGreen;
                             } else if (line.toLowerCase().contains('warn')) {
                               lineColor = AppTheme.warningAmber;
                             } else if (line.toLowerCase().startsWith('---')) {
