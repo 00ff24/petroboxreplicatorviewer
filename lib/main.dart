@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
 import 'package:replicatorviewer/app/common/widgets/app_logo.dart';
 import 'package:replicatorviewer/app/config/theme.dart';
@@ -60,6 +61,11 @@ class _LoginAppState extends State<LoginApp> {
     _initialize();
   }
 
+  void _toggleFullScreen() async {
+    bool isFullScreen = await windowManager.isFullScreen();
+    await windowManager.setFullScreen(!isFullScreen);
+  }
+
   Future<void> _initialize() async {
     // 1. Precargar datos de servidores (Splash logic)
     // Si hay caché, entramos directo. Si no, esperamos al primer servidor.
@@ -110,25 +116,30 @@ class _LoginAppState extends State<LoginApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Replicator Login',
-      debugShowCheckedModeBanner: false,
-      themeMode: _themeMode,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      // Si está logueado mostramos Home, si no, Login
-      home:
-          _isLoading
-              ? const SplashScreen()
-              : (_isLoggedIn
-                  ? HomeScreen(
-                    onThemeToggle: _toggleTheme,
-                    isDarkMode: _themeMode == ThemeMode.dark,
-                  )
-                  : LoginScreen(
-                    onThemeToggle: _toggleTheme,
-                    isDarkMode: _themeMode == ThemeMode.dark,
-                  )),
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.f11): _toggleFullScreen,
+      },
+      child: MaterialApp(
+        title: 'Replicator Login',
+        debugShowCheckedModeBanner: false,
+        themeMode: _themeMode,
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        // Si está logueado mostramos Home, si no, Login
+        home:
+            _isLoading
+                ? const SplashScreen()
+                : (_isLoggedIn
+                    ? HomeScreen(
+                      onThemeToggle: _toggleTheme,
+                      isDarkMode: _themeMode == ThemeMode.dark,
+                    )
+                    : LoginScreen(
+                      onThemeToggle: _toggleTheme,
+                      isDarkMode: _themeMode == ThemeMode.dark,
+                    )),
+      ),
     );
   }
 }
