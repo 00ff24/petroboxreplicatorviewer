@@ -194,13 +194,13 @@ class ServerManager {
   static const String _cacheKey = 'cached_servers_data';
 
   static const List<String> apiEndpoints = [
-    'http://bilbo.petroboxinc.com:5001/usuarios',
+    'http://bilbo.petroboxinc.com:5001/sistema/status',
 
-    'http://aragorn.petroboxinc.com:5001/usuarios',
+    'http://aragorn.petroboxinc.com:5001/sistema/status',
 
-    'http://frodo.petroboxinc.com:5001/usuarios',
+    'http://frodo.petroboxinc.com:5001/sistema/status',
 
-    'http://gandalf.petroboxinc.com:5001/usuarios',
+    'http://gandalf.petroboxinc.com:5001/sistema/status',
   ];
 
   static Future<bool> hasCache() async {
@@ -339,7 +339,7 @@ class ServerManager {
     try {
       // La URL actual es "...:5001/usuarios", necesitamos "...:5001/sistema/reiniciar"
 
-      final baseUrl = server.apiUrl.replaceAll('/usuarios', '');
+      final baseUrl = server.apiUrl.split('/sistema/status').first;
 
       final url = '$baseUrl/sistema/reiniciar';
 
@@ -430,11 +430,10 @@ class ServerManager {
       status = 'warning';
     }
 
-    // 5. Nodos Activos/Inactivos
+    // 5. Nodos Activos/Inactivos (Usamos el contador del nuevo endpoint si existe)
 
-    final List usuarios = data['usuarios'] ?? [];
-
-    final int activeNodes = usuarios.length;
+    final int activeNodes =
+        data['usuarios_count'] ?? (data['usuarios'] as List?)?.length ?? 0;
 
     final int inactiveNodes = 0;
 
@@ -1686,6 +1685,10 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
   // Key para controlar el widget hijo UserDetailContent desde aquí (el padre)
   final GlobalKey<UserDetailContentState> _userDetailKey = GlobalKey();
 
+  // Getter para obtener la base de usuarios reemplazando la ruta de status
+  String get usersBaseUrl =>
+      widget.server.apiUrl.replaceAll('/sistema/status', '/usuarios');
+
   @override
   void initState() {
     super.initState();
@@ -1700,7 +1703,7 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
 
   Future<void> fetchUsers() async {
     try {
-      final response = await http.get(Uri.parse(widget.server.apiUrl));
+      final response = await http.get(Uri.parse(usersBaseUrl));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -1730,7 +1733,7 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
     });
 
     try {
-      final url = '${widget.server.apiUrl}/$username/actualizar-archivos';
+      final url = '$usersBaseUrl/$username/actualizar-archivos';
 
       final response = await http.post(Uri.parse(url));
 
@@ -1853,7 +1856,7 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
       );
 
       try {
-        final url = '${widget.server.apiUrl}/$username/reiniciar-servicios';
+        final url = '$usersBaseUrl/$username/reiniciar-servicios';
         final response = await http.post(Uri.parse(url));
 
         if (mounted) {
@@ -2443,7 +2446,7 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                                             key: _userDetailKey,
                                             username: _detailedUser!['usuario'],
                                             serverName: widget.server.name,
-                                            apiUrl: widget.server.apiUrl,
+                                            apiUrl: usersBaseUrl,
                                             userData: _detailedUser!,
                                           )
                                           : const SizedBox.shrink(),
@@ -2956,7 +2959,9 @@ class UserDetailContentState extends State<UserDetailContent> {
 
                             if (line.toLowerCase().contains('error')) {
                               lineColor = AppTheme.errorRed;
-                            } else if (line.toLowerCase().contains('incoming file')) {
+                            } else if (line.toLowerCase().contains(
+                              'incoming file',
+                            )) {
                               lineColor = AppTheme.successGreen;
                             } else if (line.toLowerCase().contains('warn')) {
                               lineColor = AppTheme.warningAmber;
