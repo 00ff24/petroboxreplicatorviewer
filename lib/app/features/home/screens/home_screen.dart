@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:replicatorviewer/app/config/theme.dart';
 
@@ -8,6 +9,7 @@ import 'package:replicatorviewer/main.dart'; // Tu import original
 
 import 'package:shared_preferences/shared_preferences.dart'; // Tu import original
 
+import 'dart:io' show Platform;
 import 'dart:math'; // Añadido para generar números de paquetes
 
 import 'dart:async';
@@ -15,6 +17,17 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+
+// Helper para detectar plataforma (sin tomar en cuenta el ancho de ventana)
+bool get isDesktopPlatform {
+  if (kIsWeb) return false;
+  return Platform.isLinux || Platform.isWindows || Platform.isMacOS;
+}
+
+bool get isMobilePlatform {
+  if (kIsWeb) return false;
+  return Platform.isAndroid || Platform.isIOS;
+}
 
 // ==========================================
 
@@ -842,9 +855,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   double _estimateCardHeight(ServerData server) {
-    // Altura base estimada (Header + Resources + Footer + Paddings)
-    // Ajustado para cubrir el contenido estático de la tarjeta
-    double height = 230;
+    // Altura base: Header + CPU/RAM + Disco + Nodos + paddings
+    double height = 300;
 
     // Altura dinámica por líneas de IP (lo que hace a Gandalf más alto)
     final ipLines =
@@ -864,22 +876,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             // Detectar si es móvil (ancho < 600px)
 
             final bool isMobile = constraints.maxWidth < 600;
+            final bool isWide = constraints.maxWidth >= 1200;
 
             // 1. Más padding en los bordes para móvil (32 vs 20)
 
-            final double horizontalPadding = isMobile ? 32.0 : 20.0;
+            final double horizontalPadding = isMobile ? 16.0 : (isWide ? 32.0 : 20.0);
 
             // 2. Tarjetas más anchas en móvil (hasta 340px o ancho disponible)
 
-            // En desktop se mantiene fijo en 300px para acomodar mejor la info
+            // En desktop se mantiene fijo en 320px para acomodar mejor la info
 
-            double cardWidth = 300.0;
+            double cardWidth = isWide ? 340.0 : 300.0;
 
             if (isMobile) {
               final double availableWidth =
                   constraints.maxWidth - (horizontalPadding * 2);
 
-              cardWidth = max(0.0, availableWidth > 340 ? 340 : availableWidth);
+              cardWidth = max(0.0, availableWidth > 360 ? 360 : availableWidth);
             }
 
             // Calcular la altura máxima basada en la tarjeta más grande
@@ -898,8 +911,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   .reduce(max);
             }
 
-            if (maxCardHeight < 280) {
-              maxCardHeight = 280; // Altura mínima de seguridad
+            if (maxCardHeight < 320) {
+              maxCardHeight = 320; // Altura mínima de seguridad
             }
 
             return Padding(
@@ -1953,6 +1966,9 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
           ),
     );
 
+    // Al cerrar cualquier rama del dialog, quitar foco para evitar que el buscador robe el focus
+    FocusManager.instance.primaryFocus?.unfocus();
+
     if (confirm == true) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -2174,21 +2190,34 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
     );
   }
 
+  // Estado solo usado por la vista desktop split (no afecta a mobile)
+  String _desktopFilterText = '';
+
   @override
   Widget build(BuildContext context) {
+    // RUTA DESKTOP: pantalla amplia + plataforma desktop -> split layout dedicado
+    final double screenWidth = MediaQuery.of(context).size.width;
+    if (isDesktopPlatform && screenWidth >= 1100) {
+      return _buildDesktopBody(context);
+    }
+    // RUTA MOBILE / NARROW: layout existente sin tocar
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1000),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final bool isWide = constraints.maxWidth >= 900;
+            final double maxWidth = isWide ? 1400 : 1000;
+            return Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.all(isWide ? 24 : 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                     children: [
                       Container(
                         height: 48,
@@ -2241,7 +2270,8 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                                 return TextField(
                                   controller: textEditingController,
                                   focusNode: focusNode,
-                                  autofocus: true,
+                                  // Autofocus solo si no hay usuario seleccionado todavia
+                                  autofocus: selectedUser == null,
                                   style: TextStyle(
                                     color:
                                         Theme.of(
@@ -2394,7 +2424,7 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                     Column(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(24),
+                          padding: EdgeInsets.all(isWide ? 24 : 16),
                           margin: const EdgeInsets.only(bottom: 16),
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
@@ -2781,10 +2811,433 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                       ),
                     ),
                   const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // =====================================================
+  // DESKTOP-ONLY BODY (Linux/Windows/macOS, ancho >= 1100)
+  // No afecta al layout mobile
+  // =====================================================
+
+  Widget _buildDesktopBody(BuildContext context) {
+    final theme = Theme.of(context);
+
+    // Filtrar usuarios segun texto del buscador desktop
+    List<Map<String, dynamic>> visibleUsers;
+    if (_desktopFilterText.trim().isEmpty) {
+      visibleUsers = randomUsers;
+    } else {
+      final q = _desktopFilterText.toLowerCase();
+      visibleUsers = users
+          .where((u) => u['usuario'].toString().toLowerCase().contains(q))
+          .cast<Map<String, dynamic>>()
+          .toList();
+    }
+
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ─── Header (back + nombre del servidor) ───
+              Row(
+                children: [
+                  Container(
+                    height: 44,
+                    width: 44,
+                    decoration: BoxDecoration(
+                      color: theme.cardColor,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.arrow_back_rounded, size: 20),
+                      tooltip: 'Volver',
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    widget.server.name,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: theme.textTheme.titleLarge?.color,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppTheme.successGreen.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'ACTIVO',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.successGreen,
+                      ),
+                    ),
+                  ),
                 ],
               ),
+              const SizedBox(height: 20),
+              // ─── Cuerpo split: panel izquierdo + panel derecho ───
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      width: 380,
+                      child: _buildDesktopLeftPanel(visibleUsers),
+                    ),
+                    const SizedBox(width: 24),
+                    Expanded(
+                      child: selectedUser != null
+                          ? _buildDesktopRightPanel()
+                          : _buildDesktopEmptyRight(),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopLeftPanel(List<Map<String, dynamic>> visibleUsers) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Buscador
+        TextField(
+          autofocus: selectedUser == null,
+          onChanged: (val) => setState(() => _desktopFilterText = val),
+          style: TextStyle(fontSize: 14, color: theme.textTheme.bodyLarge?.color),
+          decoration: InputDecoration(
+            hintText: isLoading
+                ? 'Cargando usuarios...'
+                : 'Buscar en ${widget.server.name}...',
+            hintStyle: TextStyle(
+              fontSize: 14,
+              color: theme.textTheme.bodyMedium?.color,
+            ),
+            prefixIcon: Icon(
+              Icons.search_rounded,
+              size: 20,
+              color: theme.textTheme.bodyMedium?.color,
+            ),
+            suffixIcon: _desktopFilterText.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () => setState(() => _desktopFilterText = ''),
+                  )
+                : null,
+            filled: true,
+            fillColor: theme.cardColor,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppTheme.primaryBlue, width: 1.5),
             ),
           ),
+        ),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            _desktopFilterText.isEmpty
+                ? 'Usuarios sugeridos'
+                : 'Resultados (${visibleUsers.length})',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.4,
+              color: theme.textTheme.bodyMedium?.color?.withOpacity(0.5),
+            ),
+          ),
+        ),
+        Expanded(
+          child: isLoading && visibleUsers.isEmpty
+              ? const Center(
+                  child: CircularProgressIndicator(color: AppTheme.primaryBlue),
+                )
+              : visibleUsers.isEmpty
+                  ? Center(
+                      child: Text(
+                        _desktopFilterText.isEmpty
+                            ? 'No hay usuarios disponibles'
+                            : 'Sin resultados para "$_desktopFilterText"',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: theme.textTheme.bodyMedium?.color?.withOpacity(0.4),
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: visibleUsers.length,
+                      padding: const EdgeInsets.only(right: 4),
+                      itemBuilder: (context, index) =>
+                          _buildUserPreviewCard(visibleUsers[index]),
+                    ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopRightPanel() {
+    final theme = Theme.of(context);
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header del usuario seleccionado
+          Container(
+            padding: const EdgeInsets.all(20),
+            margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  theme.cardColor,
+                  theme.scaffoldBackgroundColor,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: theme.dividerColor),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        selectedUser!['usuario'],
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: theme.textTheme.titleLarge?.color,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.dns_rounded,
+                            size: 14,
+                            color: theme.textTheme.bodyMedium?.color,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Alojado en ${widget.server.name}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: theme.textTheme.bodyMedium?.color,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          ..._buildTipoBadgesInline(selectedUser!['tipo_instalacion']),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                InkWell(
+                  onTap: () => handleRestartService(selectedUser!),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 18),
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorRed.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.errorRed.withOpacity(0.3)),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.restart_alt_rounded, size: 14, color: AppTheme.errorRed),
+                        SizedBox(width: 6),
+                        Text(
+                          'REINICIAR',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.errorRed,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Panel de monitorización
+          Container(
+            decoration: AppTheme.cardDecoration(context),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  color: theme.scaffoldBackgroundColor.withOpacity(0.5),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: theme.dividerColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.analytics_rounded,
+                          color: AppTheme.primaryBlue,
+                          size: 16,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Monitorización y Logs',
+                        style: TextStyle(
+                          color: theme.textTheme.bodyMedium?.color,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const Spacer(),
+                      InkWell(
+                        onTap: () => _userDetailKey.currentState?.refreshData(),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 14),
+                          decoration: BoxDecoration(
+                            color: theme.dividerColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: theme.dividerColor),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.refresh_rounded,
+                                size: 14,
+                                color: theme.textTheme.bodyMedium?.color,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'RECARGAR',
+                                style: TextStyle(
+                                  color: theme.textTheme.bodyMedium?.color,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_detailedUser != null)
+                  UserDetailContent(
+                    key: _userDetailKey,
+                    username: _detailedUser!['usuario'],
+                    serverName: widget.server.name,
+                    apiUrl: usersBaseUrl,
+                    userData: _detailedUser!,
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopEmptyRight() {
+    final theme = Theme.of(context);
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.person_search_rounded,
+            size: 72,
+            color: theme.textTheme.bodyMedium?.color?.withOpacity(0.15),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'Selecciona un usuario',
+            style: TextStyle(
+              fontSize: 17,
+              color: theme.textTheme.bodyMedium?.color?.withOpacity(0.5),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Busca o elige uno de la lista de la izquierda',
+            style: TextStyle(
+              fontSize: 13,
+              color: theme.textTheme.bodyMedium?.color?.withOpacity(0.3),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildTipoBadgesInline(String? tipo) {
+    final List<Widget> badges = [];
+    if (tipo == 'server_node' || tipo == 'server') {
+      badges.add(_tipoBadge('SERVER', AppTheme.primaryBlue));
+    }
+    if (tipo == 'server_node') {
+      badges.add(const SizedBox(width: 4));
+    }
+    if (tipo == 'server_node' || tipo == 'node') {
+      badges.add(_tipoBadge('NODE', AppTheme.successGreen));
+    }
+    return badges;
+  }
+
+  Widget _tipoBadge(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+          color: color,
         ),
       ),
     );
@@ -3040,6 +3493,8 @@ class UserDetailContentState extends State<UserDetailContent> {
         nodo: nodo,
       ),
     );
+    // Al cerrar el dialog, sacar el foco para no abrir el teclado en el buscador
+    FocusManager.instance.primaryFocus?.unfocus();
   }
 
   void copyLogsToClipboard() {
@@ -3083,9 +3538,10 @@ class UserDetailContentState extends State<UserDetailContent> {
       if (v > 0) totalOutputPackages += v;
     }
 
+    final bool isWide = MediaQuery.of(context).size.width >= 900;
     return Container(
       color: Theme.of(context).cardColor,
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+      padding: EdgeInsets.fromLTRB(isWide ? 24 : 16, 20, isWide ? 24 : 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
 
@@ -3179,10 +3635,26 @@ class UserDetailContentState extends State<UserDetailContent> {
                 _isOutputExpanded
                     ? Padding(
                       padding: const EdgeInsets.only(top: 12),
-                      child: Column(
-                        children: [
-                          if (outputs.isNotEmpty)
-                            ...sortedKeys.map((key) {
+                      child: outputs.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Text(
+                                "No hay colas de salida configuradas.",
+                                style: TextStyle(
+                                  color: Theme.of(context).textTheme.bodyMedium?.color,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            )
+                          : ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 165),
+                            child: Scrollbar(
+                              thumbVisibility: true,
+                              child: ListView(
+                                shrinkWrap: true,
+                                padding: const EdgeInsets.only(right: 4),
+                                children: [
+                          ...sortedKeys.map((key) {
                               String displayName = key;
                               final value = outputs[key];
                               if (displayName.contains('/')) {
@@ -3295,23 +3767,11 @@ class UserDetailContentState extends State<UserDetailContent> {
                                   ),
                                 ),
                               );
-                            })
-                          else
-                            Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Text(
-                                "No hay colas de salida configuradas.",
-                                style: TextStyle(
-                                  color:
-                                      Theme.of(
-                                        context,
-                                      ).textTheme.bodyMedium?.color,
-                                  fontStyle: FontStyle.italic,
-                                ),
+                            }),
+                                ],
                               ),
                             ),
-                        ],
-                      ),
+                          ),
                     )
                     : const SizedBox.shrink(),
           ),
@@ -3319,11 +3779,14 @@ class UserDetailContentState extends State<UserDetailContent> {
           const SizedBox(height: 24),
 
           // 3. CONSOLA DE LOGS (Tap para copiar)
-          GestureDetector(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final double logsHeight = MediaQuery.of(context).size.width >= 900 ? 200 : 180;
+              return GestureDetector(
             onTap: copyLogsToClipboard,
             child: Container(
               width: double.infinity,
-              height: 280,
+              height: logsHeight,
               decoration: BoxDecoration(
                 color: const Color(0xFF0D1117),
                 borderRadius: BorderRadius.circular(12),
@@ -3436,6 +3899,8 @@ class UserDetailContentState extends State<UserDetailContent> {
                 ],
               ),
             ),
+          );
+            },
           ),
           const SizedBox(height: 6),
           Center(
@@ -3685,6 +4150,8 @@ class _NodeServicesDialogState extends State<NodeServicesDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Theme.of(context).cardColor,
+      surfaceTintColor: Colors.transparent,
+      elevation: 8,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560, maxHeight: 600),
         child: Padding(
@@ -3723,7 +4190,6 @@ class _NodeServicesDialogState extends State<NodeServicesDialog> {
                 'Nodo: ${widget.nodo}',
                 style: TextStyle(
                   fontSize: 12,
-                  fontFamily: 'monospace',
                   color: Theme.of(context).textTheme.bodyMedium?.color,
                 ),
               ),
@@ -3749,9 +4215,15 @@ class _NodeServicesDialogState extends State<NodeServicesDialog> {
                     ),
                     onPressed: _selectedForRestart.isEmpty ? null : _restartSelected,
                   );
-                  final btnCerrar = TextButton(
+                  final btnCerrar = OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Theme.of(context).textTheme.bodyLarge?.color,
+                      side: BorderSide(color: Theme.of(context).dividerColor),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    ),
+                    icon: const Icon(Icons.close_rounded, size: 16),
+                    label: const Text('Cerrar'),
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cerrar'),
                   );
                   // Si el ancho es muy chico, apilar verticalmente
                   if (constraints.maxWidth < 360) {
@@ -3851,8 +4323,7 @@ class _NodeServicesDialogState extends State<NodeServicesDialog> {
               Text(
                 name,
                 style: TextStyle(
-                  fontSize: 12.5,
-                  fontFamily: 'monospace',
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: Theme.of(context).textTheme.bodyLarge?.color,
                 ),
