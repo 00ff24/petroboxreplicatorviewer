@@ -79,11 +79,15 @@ class ServerData {
 
   final List<LogData> logs;
 
+  final String diskUsage;
+
   // Datos crudos para las barras de progreso
 
   final double rawCpu;
 
   final double rawRamPercent;
+
+  final double rawDiskPercent;
 
   ServerData({
     required this.id,
@@ -100,6 +104,8 @@ class ServerData {
 
     required this.ramUsage,
 
+    required this.diskUsage,
+
     required this.uptime,
 
     required this.activeNodes,
@@ -115,6 +121,8 @@ class ServerData {
     required this.rawCpu,
 
     required this.rawRamPercent,
+
+    required this.rawDiskPercent,
   });
 
   Map<String, dynamic> toJson() => {
@@ -144,9 +152,13 @@ class ServerData {
 
     'logs': logs.map((x) => x.toJson()).toList(),
 
+    'diskUsage': diskUsage,
+
     'rawCpu': rawCpu,
 
     'rawRamPercent': rawRamPercent,
+
+    'rawDiskPercent': rawDiskPercent,
   };
 
   factory ServerData.fromJson(Map<String, dynamic> json) {
@@ -183,9 +195,13 @@ class ServerData {
           (json['logs'] as List?)?.map((x) => LogData.fromJson(x)).toList() ??
           [],
 
+      diskUsage: json['diskUsage'] ?? 'N/A',
+
       rawCpu: (json['rawCpu'] as num?)?.toDouble() ?? 0.0,
 
       rawRamPercent: (json['rawRamPercent'] as num?)?.toDouble() ?? 0.0,
+
+      rawDiskPercent: (json['rawDiskPercent'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }
@@ -317,6 +333,8 @@ class ServerManager {
 
       ramUsage: 'N/A',
 
+      diskUsage: 'N/A',
+
       uptime: 'Offline',
 
       activeNodes: 0,
@@ -332,6 +350,8 @@ class ServerManager {
       rawCpu: 0.0,
 
       rawRamPercent: 0.0,
+
+      rawDiskPercent: 0.0,
     );
   }
 
@@ -416,7 +436,27 @@ class ServerManager {
       ramUsage = '${usado.toStringAsFixed(1)}/${total.toStringAsFixed(1)} GB';
     }
 
-    // 4. Uptime
+    // 4. Disco (Usado / Total)
+
+    final discoData = sistema['disco'];
+
+    String diskUsage = 'N/A';
+
+    double diskPercent = 0.0;
+
+    if (discoData != null && discoData is Map) {
+      final double total = (discoData['total_gb'] as num).toDouble();
+
+      final double libre = (discoData['libre_gb'] as num).toDouble();
+
+      final double usado = total - libre;
+
+      diskPercent = (total > 0) ? (usado / total) * 100 : 0.0;
+
+      diskUsage = '${usado.toStringAsFixed(0)}/${total.toStringAsFixed(0)} GB';
+    }
+
+    // 5. Uptime
 
     final String uptime = sistema['uptime'] ?? 'N/A';
 
@@ -452,6 +492,8 @@ class ServerManager {
 
       ramUsage: ramUsage,
 
+      diskUsage: diskUsage,
+
       uptime: uptime,
 
       activeNodes: activeNodes,
@@ -467,6 +509,8 @@ class ServerManager {
       rawCpu: cpuLoad,
 
       rawRamPercent: ramPercent,
+
+      rawDiskPercent: diskPercent,
     );
   }
 }
@@ -492,6 +536,59 @@ class HomeScreen extends StatefulWidget {
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _PulsingDot extends StatefulWidget {
+  final Color color;
+  final double size;
+  const _PulsingDot({required this.color, this.size = 8});
+
+  @override
+  State<_PulsingDot> createState() => _PulsingDotState();
+}
+
+class _PulsingDotState extends State<_PulsingDot>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          width: widget.size,
+          height: widget.size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: widget.color,
+            boxShadow: [
+              BoxShadow(
+                color: widget.color.withOpacity(0.4 * _controller.value),
+                blurRadius: 6 * _controller.value,
+                spreadRadius: 2 * _controller.value,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
@@ -583,6 +680,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
           ramUsage: cached.ramUsage,
 
+          diskUsage: cached.diskUsage,
+
           uptime: cached.uptime,
 
           activeNodes: cached.activeNodes,
@@ -598,6 +697,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           rawCpu: cached.rawCpu,
 
           rawRamPercent: cached.rawRamPercent,
+
+          rawDiskPercent: cached.rawDiskPercent,
         );
       } else {
         currentMap[server.apiUrl] = server;
@@ -701,6 +802,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       }
     }
+  }
+
+  void _showOfflineSnackbar(String serverName) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.cloud_off_rounded, color: Colors.white, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '$serverName esta offline',
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF475569),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+        margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      ),
+    );
   }
 
   void _toggleGlobalExpansion() {
@@ -857,30 +983,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // Logo y Título
         Row(
           children: [
-            // Avatar del Perfil (Movido al principio)
             Container(
-              width: 32,
-
-              height: 32,
-
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
-                color: Theme.of(context).dividerColor.withOpacity(0.1),
-
-                borderRadius: BorderRadius.circular(16),
-
-                border: Border.all(color: Theme.of(context).dividerColor),
+                gradient: LinearGradient(
+                  colors: [
+                    AppTheme.primaryBlue,
+                    AppTheme.primaryBlue.withOpacity(0.7),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(10),
               ),
-
               child: const Center(
                 child: Text(
                   'P',
-
                   style: TextStyle(
-                    color: AppTheme.primaryBlue,
-
+                    color: Colors.white,
                     fontWeight: FontWeight.bold,
-
-                    fontSize: 14,
+                    fontSize: 15,
                   ),
                 ),
               ),
@@ -908,49 +1031,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                 Row(
                   children: [
-                    // Indicador de pulso
-                    SizedBox(
-                      width: 8,
-
-                      height: 8,
-
-                      child: Stack(
-                        alignment: Alignment.center,
-
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                              color: AppTheme.successGreen.withOpacity(0.5),
-
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-
-                          Container(
-                            width: 4,
-
-                            height: 4,
-
-                            decoration: const BoxDecoration(
-                              color: AppTheme.successGreen,
-
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
+                    const _PulsingDot(color: AppTheme.successGreen, size: 8),
                     const SizedBox(width: 6),
-
                     const Text(
                       'Monitoreo activo',
-
                       style: TextStyle(
                         fontSize: 12,
-
                         color: AppTheme.successGreen,
-
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -1087,14 +1174,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             .withOpacity(0.1);
     }
 
-    return Container(
+    final bool isOffline = server.status == 'offline';
+
+    return Opacity(
+      opacity: isOffline ? 0.55 : 1.0,
+      child: Container(
       padding: const EdgeInsets.all(20),
 
       decoration: AppTheme.cardDecoration(context),
 
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min, // Para que AnimatedSize funcione bien
+        mainAxisSize: MainAxisSize.min,
 
         children: [
           // Cabecera del Servidor (Tap -> Toggle en móvil / Navigate en Desktop)
@@ -1110,12 +1201,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   }
                 });
               } else {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ServerDetailScreen(server: server),
-                  ),
-                );
+                if (isOffline) {
+                  _showOfflineSnackbar(server.name);
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ServerDetailScreen(server: server),
+                    ),
+                  );
+                }
               }
             },
             child: Row(
@@ -1259,12 +1354,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ServerDetailScreen(server: server),
-                    ),
-                  );
+                  if (isOffline) {
+                    _showOfflineSnackbar(server.name);
+                  } else {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ServerDetailScreen(server: server),
+                      ),
+                    );
+                  }
                 },
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1346,17 +1445,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                     // Recursos (CPU / RAM) con Barras
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: Theme.of(
-                          context,
-                        ).scaffoldBackgroundColor.withOpacity(0.5),
+                        color: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.5),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Theme.of(
-                            context,
-                          ).dividerColor.withOpacity(0.05),
-                        ),
                       ),
                       child: Row(
                         children: [
@@ -1366,129 +1458,80 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
                                     Row(
                                       children: [
                                         Icon(
                                           Icons.memory_rounded,
                                           size: 12,
-                                          color:
-                                              Theme.of(
-                                                context,
-                                              ).textTheme.bodyMedium?.color,
+                                          color: Theme.of(context).textTheme.bodyMedium?.color,
                                         ),
-                                        SizedBox(width: 4),
+                                        const SizedBox(width: 4),
                                         Text(
                                           'CPU',
                                           style: TextStyle(
                                             fontSize: 11,
-                                            color:
-                                                Theme.of(
-                                                  context,
-                                                ).textTheme.bodyMedium?.color,
+                                            fontWeight: FontWeight.w500,
+                                            color: Theme.of(context).textTheme.bodyMedium?.color,
                                           ),
                                         ),
                                       ],
                                     ),
                                     Text(
-                                      server.rawCpu.toStringAsFixed(1),
+                                      '${server.rawCpu.toStringAsFixed(0)}%',
                                       style: AppTheme.monoStyle.copyWith(
                                         fontSize: 11,
-                                        color:
-                                            Theme.of(
-                                              context,
-                                            ).textTheme.bodyMedium?.color,
+                                        fontWeight: FontWeight.bold,
+                                        color: server.rawCpu > 80
+                                            ? AppTheme.errorRed
+                                            : server.rawCpu > 50
+                                            ? AppTheme.warningAmber
+                                            : Theme.of(context).textTheme.bodyLarge?.color,
                                       ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 6),
-
-                                // Barra de Progreso CPU
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Stack(
-                                        children: [
-                                          Container(
-                                            height: 6,
-                                            decoration: BoxDecoration(
-                                              color: Theme.of(
-                                                context,
-                                              ).dividerColor.withOpacity(0.1),
-                                              borderRadius:
-                                                  BorderRadius.circular(3),
-                                            ),
-                                          ),
-                                          FractionallySizedBox(
-                                            widthFactor: (server.rawCpu / 100)
-                                                .clamp(0.0, 1.0),
-                                            child: Container(
-                                              height: 6,
-                                              decoration: BoxDecoration(
-                                                color:
-                                                    server.rawCpu > 80
-                                                        ? AppTheme.errorRed
-                                                        : server.rawCpu > 50
-                                                        ? AppTheme.warningAmber
-                                                        : AppTheme.successGreen,
-                                                borderRadius:
-                                                    BorderRadius.circular(3),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '${server.rawCpu.toStringAsFixed(0)}%',
-                                      style: AppTheme.monoStyle.copyWith(
-                                        fontSize: 10,
-                                        color:
-                                            Theme.of(
-                                              context,
-                                            ).textTheme.bodyMedium?.color,
-                                      ),
-                                    ),
-                                  ],
+                                const SizedBox(height: 8),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: LinearProgressIndicator(
+                                    value: (server.rawCpu / 100).clamp(0.0, 1.0),
+                                    minHeight: 5,
+                                    backgroundColor: Theme.of(context).dividerColor.withOpacity(0.1),
+                                    color: server.rawCpu > 80
+                                        ? AppTheme.errorRed
+                                        : server.rawCpu > 50
+                                        ? AppTheme.warningAmber
+                                        : AppTheme.successGreen,
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-
-                          const SizedBox(width: 16),
-
+                          const SizedBox(width: 20),
                           // RAM
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
                                     Row(
                                       children: [
                                         Icon(
                                           Icons.sd_storage_rounded,
                                           size: 12,
-                                          color:
-                                              Theme.of(
-                                                context,
-                                              ).textTheme.bodyMedium?.color,
+                                          color: Theme.of(context).textTheme.bodyMedium?.color,
                                         ),
-                                        SizedBox(width: 4),
+                                        const SizedBox(width: 4),
                                         Text(
                                           'RAM',
                                           style: TextStyle(
                                             fontSize: 11,
-                                            color:
-                                                Theme.of(
-                                                  context,
-                                                ).textTheme.bodyMedium?.color,
+                                            fontWeight: FontWeight.w500,
+                                            color: Theme.of(context).textTheme.bodyMedium?.color,
                                           ),
                                         ),
                                       ],
@@ -1497,60 +1540,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                       server.ramUsage,
                                       style: AppTheme.monoStyle.copyWith(
                                         fontSize: 11,
-                                        color:
-                                            Theme.of(
-                                              context,
-                                            ).textTheme.bodyMedium?.color,
+                                        fontWeight: FontWeight.bold,
+                                        color: Theme.of(context).textTheme.bodyLarge?.color,
                                       ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 6),
-
-                                // Barra de Progreso RAM
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Stack(
-                                        children: [
-                                          Container(
-                                            height: 6,
-                                            decoration: BoxDecoration(
-                                              color: Theme.of(
-                                                context,
-                                              ).dividerColor.withOpacity(0.1),
-                                              borderRadius:
-                                                  BorderRadius.circular(3),
-                                            ),
-                                          ),
-                                          FractionallySizedBox(
-                                            widthFactor: (server.rawRamPercent /
-                                                    100)
-                                                .clamp(0.0, 1.0),
-                                            child: Container(
-                                              height: 6,
-                                              decoration: BoxDecoration(
-                                                color: AppTheme.primaryBlue,
-                                                borderRadius:
-                                                    BorderRadius.circular(3),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '${server.rawRamPercent.toStringAsFixed(0)}%',
-                                      style: AppTheme.monoStyle.copyWith(
-                                        fontSize: 10,
-                                        color:
-                                            Theme.of(
-                                              context,
-                                            ).textTheme.bodyMedium?.color,
-                                      ),
-                                    ),
-                                  ],
+                                const SizedBox(height: 8),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: LinearProgressIndicator(
+                                    value: (server.rawRamPercent / 100).clamp(0.0, 1.0),
+                                    minHeight: 5,
+                                    backgroundColor: Theme.of(context).dividerColor.withOpacity(0.1),
+                                    color: AppTheme.primaryBlue,
+                                  ),
                                 ),
                               ],
                             ),
@@ -1559,7 +1563,71 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                     ),
 
-                    //const Spacer(),
+                    const SizedBox(height: 10),
+
+                    // Disco
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.storage_rounded,
+                                    size: 12,
+                                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'DISCO',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Text(
+                                server.diskUsage,
+                                style: AppTheme.monoStyle.copyWith(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: server.rawDiskPercent > 90
+                                      ? AppTheme.errorRed
+                                      : server.rawDiskPercent > 75
+                                      ? AppTheme.warningAmber
+                                      : Theme.of(context).textTheme.bodyLarge?.color,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: (server.rawDiskPercent / 100).clamp(0.0, 1.0),
+                              minHeight: 5,
+                              backgroundColor: Theme.of(context).dividerColor.withOpacity(0.1),
+                              color: server.rawDiskPercent > 90
+                                  ? AppTheme.errorRed
+                                  : server.rawDiskPercent > 75
+                                  ? AppTheme.warningAmber
+                                  : AppTheme.primaryBlue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
                     const SizedBox(height: 20),
 
                     // Resumen de Nodos
@@ -1651,6 +1719,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
+    ),
     );
   }
 }
@@ -1672,6 +1741,7 @@ class ServerDetailScreen extends StatefulWidget {
 
 class _ServerDetailScreenState extends State<ServerDetailScreen> {
   List<dynamic> users = [];
+  List<Map<String, dynamic>> randomUsers = []; // 5 usuarios aleatorios para preview
 
   Map<String, dynamic>? selectedUser; // Usuario seleccionado en el buscador
   Map<String, dynamic>? _detailedUser; // Usuario "fijado" para mostrar detalles
@@ -1712,6 +1782,14 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
           setState(() {
             users = data['usuarios'] ?? [];
 
+            // Seleccionar hasta 5 usuarios aleatorios para preview
+            if (users.length > 5) {
+              final shuffled = List<dynamic>.from(users)..shuffle(Random());
+              randomUsers = shuffled.take(5).cast<Map<String, dynamic>>().toList();
+            } else {
+              randomUsers = users.cast<Map<String, dynamic>>().toList();
+            }
+
             isLoading = false;
           });
         }
@@ -1729,13 +1807,22 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
     setState(() {
       if (selectedUser!['archivos'] is Map) {
         selectedUser!['archivos']['status'] = 'cargando';
+      } else {
+        selectedUser!['archivos'] = {
+          'status': 'cargando',
+          'input': 0,
+          'output': {},
+        };
       }
     });
 
     try {
       final url = '$usersBaseUrl/$username/actualizar-archivos';
+      debugPrint('[refreshUserFiles] POST $url');
 
       final response = await http.post(Uri.parse(url));
+      debugPrint('[refreshUserFiles] Status: ${response.statusCode}');
+      debugPrint('[refreshUserFiles] Body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -1757,18 +1844,37 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
         }
       }
     } catch (e) {
-      debugPrint('Error refreshing user files: $e');
+      debugPrint('[refreshUserFiles] Error: $e');
 
       if (mounted &&
           selectedUser != null &&
           selectedUser!['usuario'] == username) {
-        setState(() => selectedUser!['archivos']['status'] = 'error');
+        setState(() {
+          if (selectedUser!['archivos'] is Map) {
+            selectedUser!['archivos']['status'] = 'error';
+          } else {
+            selectedUser!['archivos'] = {
+              'status': 'error',
+              'input': 0,
+              'output': {},
+            };
+          }
+        });
       }
     }
   }
 
   // Lógica unificada: Seleccionar + Cargar + Mostrar
   void _onUserSelected(Map<String, dynamic> selection) {
+    // Asegurar que archivos tenga una estructura válida antes de mostrar detalles
+    if (selection['archivos'] is! Map) {
+      selection['archivos'] = {
+        'status': 'cargando',
+        'input': 0,
+        'output': {},
+      };
+    }
+
     setState(() {
       selectedUser = selection;
       _detailedUser = selection; // Mostrar detalles inmediatamente
@@ -1887,6 +1993,185 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
         }
       }
     }
+  }
+
+  Widget _buildUserPreviewCard(Map<String, dynamic> user) {
+    return GestureDetector(
+      onTap: () => _onUserSelected(user),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Theme.of(context).cardColor,
+              Theme.of(context).scaffoldBackgroundColor,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Theme.of(context).dividerColor,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Theme.of(context).shadowColor.withOpacity(0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    user['usuario'],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).textTheme.titleLarge?.color,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.dns_rounded,
+                        size: 12,
+                        color: Theme.of(context).textTheme.bodyMedium?.color,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          'Alojado en ${widget.server.name}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(context).textTheme.bodyMedium?.color,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            IntrinsicWidth(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  InkWell(
+                    onTap: () => handleRestartService(user),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 5,
+                        horizontal: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.errorRed.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: AppTheme.errorRed.withOpacity(0.3),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.restart_alt_rounded,
+                            size: 12,
+                            color: AppTheme.errorRed,
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            'REINICIAR',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.errorRed,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (user['tipo_instalacion'] == 'server_node' ||
+                          user['tipo_instalacion'] == 'server')
+                        Expanded(
+                          child: Container(
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 2,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryBlue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: AppTheme.primaryBlue.withOpacity(0.3),
+                              ),
+                            ),
+                            child: const Text(
+                              'SERVER',
+                              style: TextStyle(
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.primaryBlue,
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (user['tipo_instalacion'] == 'server_node')
+                        const SizedBox(width: 4),
+                      if (user['tipo_instalacion'] == 'server_node' ||
+                          user['tipo_instalacion'] == 'node')
+                        Expanded(
+                          child: Container(
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 2,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.successGreen.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: AppTheme.successGreen.withOpacity(0.3),
+                              ),
+                            ),
+                            child: const Text(
+                              'NODE',
+                              style: TextStyle(
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.successGreen,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -2457,19 +2742,40 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                         ),
                       ],
                     )
+                  else if (randomUsers.isNotEmpty)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Usuarios',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.4),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        ...randomUsers.map((user) => _buildUserPreviewCard(user)),
+                      ],
+                    )
+                  else if (isLoading)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 80),
+                        child: CircularProgressIndicator(
+                          color: AppTheme.primaryBlue,
+                        ),
+                      ),
+                    )
                   else
                     Center(
                       child: Padding(
-                        padding: const EdgeInsets.only(top: 40),
+                        padding: const EdgeInsets.only(top: 80),
                         child: Text(
-                          'Busque un usuario en la barra superior para comenzar.',
-                          textAlign: TextAlign.center,
+                          'No se encontraron usuarios',
                           style: TextStyle(
-                            fontSize: 16,
-                            color: Theme.of(
-                              context,
-                            ).textTheme.bodyMedium?.color?.withOpacity(0.5),
-                            fontStyle: FontStyle.italic,
+                            fontSize: 15,
+                            color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.4),
                           ),
                         ),
                       ),
@@ -2527,6 +2833,9 @@ class UserDetailContentState extends State<UserDetailContent> {
   bool loadingLogs = true;
 
   bool _isOutputExpanded = false;
+
+  // Si está en null, muestra logs del usuario. Si tiene un valor, muestra logs de ese nodo.
+  String? activeNodeForLogs;
 
   @override
   void initState() {
@@ -2660,6 +2969,7 @@ class UserDetailContentState extends State<UserDetailContent> {
     setState(() {
       loadingLogs = true;
       userLogs = [];
+      activeNodeForLogs = null;
     });
 
     try {
@@ -2681,6 +2991,55 @@ class UserDetailContentState extends State<UserDetailContent> {
     } finally {
       if (mounted) setState(() => loadingLogs = false);
     }
+  }
+
+  Future<void> fetchNodeLogs(String nodo) async {
+    if (!mounted) return;
+    setState(() {
+      loadingLogs = true;
+      userLogs = [];
+      activeNodeForLogs = nodo;
+    });
+
+    final url = '${widget.apiUrl}/${widget.username}/nodos/$nodo/logs';
+    debugPrint('[FETCH-NODE-LOGS] GET $url');
+
+    try {
+      final response = await http.get(Uri.parse(url));
+      debugPrint('[FETCH-NODE-LOGS] Status: ${response.statusCode}');
+      debugPrint('[FETCH-NODE-LOGS] Body: ${response.body}');
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is Map && data.containsKey('logs')) {
+          if (mounted) {
+            setState(() => userLogs = List<String>.from(data['logs']));
+          }
+        }
+      } else {
+        if (mounted) {
+          setState(() => userLogs = ['Error al obtener logs del nodo: ${response.statusCode}', response.body]);
+        }
+      }
+    } catch (e) {
+      debugPrint('[FETCH-NODE-LOGS] Exception: $e');
+      if (mounted) {
+        setState(() => userLogs = ['Error al obtener logs del nodo: $e']);
+      }
+    } finally {
+      if (mounted) setState(() => loadingLogs = false);
+    }
+  }
+
+  Future<void> restartNodeService(String nodo) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => NodeServicesDialog(
+        apiUrl: widget.apiUrl,
+        username: widget.username,
+        nodo: nodo,
+      ),
+    );
   }
 
   void copyLogsToClipboard() {
@@ -2829,60 +3188,73 @@ class UserDetailContentState extends State<UserDetailContent> {
                               if (displayName.contains('/')) {
                                 displayName = displayName.split('/').last;
                               }
+                              final bool isActive = activeNodeForLogs == displayName;
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 8.0),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(
-                                      context,
-                                    ).scaffoldBackgroundColor.withOpacity(0.5),
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () => fetchNodeLogs(displayName),
                                     borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: Theme.of(
-                                        context,
-                                      ).dividerColor.withOpacity(0.5),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.subdirectory_arrow_right_rounded,
-                                        size: 16,
-                                        color: Theme.of(context).dividerColor,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 10,
                                       ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          displayName,
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color:
-                                                Theme.of(
-                                                  context,
-                                                ).textTheme.bodyLarge?.color,
-                                          ),
+                                      decoration: BoxDecoration(
+                                        color: isActive
+                                            ? AppTheme.primaryBlue.withOpacity(0.08)
+                                            : Theme.of(context)
+                                                .scaffoldBackgroundColor
+                                                .withOpacity(0.5),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: isActive
+                                              ? AppTheme.primaryBlue.withOpacity(0.5)
+                                              : Theme.of(context)
+                                                  .dividerColor
+                                                  .withOpacity(0.5),
                                         ),
                                       ),
-                                      if (value.toString() == '-1')
-                                        const SizedBox(
-                                          width: 12,
-                                          height: 12,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            Icons.subdirectory_arrow_right_rounded,
+                                            size: 16,
+                                            color: isActive
+                                                ? AppTheme.primaryBlue
+                                                : Theme.of(context).dividerColor,
                                           ),
-                                        )
-                                      else
-                                        Text(
-                                          '$value',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.bold,
-                                            color:
-                                                (int.tryParse(
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              displayName,
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: isActive
+                                                    ? FontWeight.w600
+                                                    : FontWeight.normal,
+                                                color: Theme.of(
+                                                  context,
+                                                ).textTheme.bodyLarge?.color,
+                                              ),
+                                            ),
+                                          ),
+                                          if (value.toString() == '-1')
+                                            const SizedBox(
+                                              width: 12,
+                                              height: 12,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                          else
+                                            Text(
+                                              '$value',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.bold,
+                                                color: (int.tryParse(
                                                               value.toString(),
                                                             ) ??
                                                             0) >
@@ -2892,9 +3264,34 @@ class UserDetailContentState extends State<UserDetailContent> {
                                                         .textTheme
                                                         .bodyMedium
                                                         ?.color,
+                                              ),
+                                            ),
+                                          const SizedBox(width: 8),
+                                          InkWell(
+                                            onTap: () => restartNodeService(displayName),
+                                            borderRadius: BorderRadius.circular(6),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: BoxDecoration(
+                                                color: AppTheme.errorRed
+                                                    .withOpacity(0.1),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: AppTheme.errorRed
+                                                      .withOpacity(0.3),
+                                                ),
+                                              ),
+                                              child: const Icon(
+                                                Icons.restart_alt_rounded,
+                                                size: 14,
+                                                color: AppTheme.errorRed,
+                                              ),
+                                            ),
                                           ),
-                                        ),
-                                    ],
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ),
                               );
@@ -2926,79 +3323,628 @@ class UserDetailContentState extends State<UserDetailContent> {
             onTap: copyLogsToClipboard,
             child: Container(
               width: double.infinity,
-              height: 250,
-              padding: const EdgeInsets.all(16),
+              height: 280,
               decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Theme.of(context).dividerColor),
+                color: const Color(0xFF0D1117),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFF21262D),
+                ),
               ),
-              child:
-                  loadingLogs
-                      ? const Center(child: CircularProgressIndicator())
-                      : userLogs.isEmpty
-                      ? Center(
-                        child: Text(
-                          'No hay logs recientes.',
-                          style: TextStyle(
-                            color:
-                                Theme.of(context).textTheme.bodyMedium?.color,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Terminal header bar
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF161B22),
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(11),
+                        topRight: Radius.circular(11),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(width: 10, height: 10, decoration: const BoxDecoration(color: Color(0xFF3FB950), shape: BoxShape.circle)),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.terminal_rounded, size: 13, color: Color(0xFF8B949E)),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            activeNodeForLogs != null
+                                ? 'Logs nodo: $activeNodeForLogs'
+                                : 'Logs: ${widget.username}',
+                            style: const TextStyle(fontSize: 11, color: Color(0xFF8B949E), fontFamily: 'monospace'),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                      )
-                      : Scrollbar(
-                        thumbVisibility: true,
-                        child: ListView.builder(
-                          itemCount: userLogs.length,
-                          itemBuilder: (context, index) {
-                            final line = userLogs[index];
-                            Color lineColor =
-                                Theme.of(context).textTheme.bodyMedium?.color ??
-                                Colors.grey;
-                            FontWeight fontWeight = FontWeight.normal;
+                        if (activeNodeForLogs != null) ...[
+                          InkWell(
+                            onTap: fetchUserLogs,
+                            borderRadius: BorderRadius.circular(4),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF21262D),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'volver',
+                                style: TextStyle(fontSize: 10, color: Color(0xFF8B949E), fontFamily: 'monospace'),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        const Icon(Icons.content_copy_rounded, size: 13, color: Color(0xFF484F58)),
+                      ],
+                    ),
+                  ),
+                  // Log content
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child:
+                          loadingLogs
+                              ? const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF58A6FF)))
+                              : userLogs.isEmpty
+                              ? const Center(
+                                child: Text(
+                                  'No hay logs recientes.',
+                                  style: TextStyle(color: Color(0xFF484F58), fontSize: 13),
+                                ),
+                              )
+                              : Scrollbar(
+                                thumbVisibility: true,
+                                child: ListView.builder(
+                                  itemCount: userLogs.length,
+                                  itemBuilder: (context, index) {
+                                    final line = userLogs[index];
+                                    Color lineColor = const Color(0xFFC9D1D9);
+                                    FontWeight fontWeight = FontWeight.normal;
 
-                            if (line.toLowerCase().contains('error')) {
-                              lineColor = AppTheme.errorRed;
-                            } else if (line.toLowerCase().contains(
-                              'incoming file',
-                            )) {
-                              lineColor = AppTheme.successGreen;
-                            } else if (line.toLowerCase().contains('warn')) {
-                              lineColor = AppTheme.warningAmber;
-                            } else if (line.toLowerCase().startsWith('---')) {
-                              lineColor = AppTheme.primaryBlue;
-                              fontWeight = FontWeight.bold;
-                            }
+                                    if (line.toLowerCase().contains('error')) {
+                                      lineColor = const Color(0xFFF85149);
+                                    } else if (line.toLowerCase().contains('incoming file')) {
+                                      lineColor = const Color(0xFF3FB950);
+                                    } else if (line.toLowerCase().contains('warn')) {
+                                      lineColor = const Color(0xFFD29922);
+                                    } else if (line.toLowerCase().startsWith('---')) {
+                                      lineColor = const Color(0xFF58A6FF);
+                                      fontWeight = FontWeight.bold;
+                                    }
 
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 4.0),
-                              child: Text(
-                                line,
-                                style: AppTheme.monoStyle.copyWith(
-                                  fontSize: 12,
-                                  color: lineColor,
-                                  fontWeight: fontWeight,
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 3.0),
+                                      child: Text(
+                                        line,
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          color: lineColor,
+                                          fontWeight: fontWeight,
+                                          fontFamily: 'monospace',
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    );
+                                  },
                                 ),
                               ),
-                            );
-                          },
-                        ),
-                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Center(
             child: Text(
-              "Toca el registro para copiar los logs",
+              "Toca para copiar los logs",
               style: TextStyle(
                 fontSize: 10,
-                color: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.color?.withOpacity(0.5),
+                color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.4),
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// PANEL DE GESTIÓN DE SERVICIOS DE UN NODO
+// ==========================================
+
+class NodeServicesDialog extends StatefulWidget {
+  final String apiUrl;
+  final String username;
+  final String nodo;
+
+  const NodeServicesDialog({
+    super.key,
+    required this.apiUrl,
+    required this.username,
+    required this.nodo,
+  });
+
+  @override
+  State<NodeServicesDialog> createState() => _NodeServicesDialogState();
+}
+
+class _NodeServicesDialogState extends State<NodeServicesDialog> {
+  static const List<String> _knownServices = [
+    'petroboxguardian',
+    'petroboxmonitor',
+    'PetroBoxReplicatorNodeSvc',
+    'PetroBoxService',
+    'PetroBoxService_Port_8091',
+    'proxy_bolivia',
+  ];
+
+  bool _loading = true;
+  String? _loadError;
+  List<Map<String, dynamic>> _services = [];
+  final Set<String> _selectedForRestart = {};
+  final Set<String> _busyServices = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchStates();
+  }
+
+  Future<void> _fetchStates() async {
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+
+    final url = '${widget.apiUrl}/${widget.username}/nodos/${widget.nodo}/servicios/estado';
+    debugPrint('[SERVICES-STATE] GET $url');
+
+    try {
+      final response = await http.get(Uri.parse(url));
+      debugPrint('[SERVICES-STATE] Status: ${response.statusCode}');
+      debugPrint('[SERVICES-STATE] Body: ${response.body}');
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final list = (data['servicios'] as List?) ?? [];
+        final mapped = list.map<Map<String, dynamic>>((s) {
+          final m = Map<String, dynamic>.from(s as Map);
+          return {
+            'name': m['Name']?.toString() ?? '',
+            'status': m['Status']?.toString() ?? 'Unknown',
+            'startType': m['StartType']?.toString() ?? 'Unknown',
+          };
+        }).toList();
+
+        // Asegurar todos los conocidos aparezcan, aunque el nodo no los tenga
+        for (final svc in _knownServices) {
+          if (!mapped.any((m) => m['name'] == svc)) {
+            mapped.add({'name': svc, 'status': 'NotInstalled', 'startType': '-'});
+          }
+        }
+        mapped.sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
+
+        setState(() {
+          _services = mapped;
+          _loading = false;
+        });
+      } else {
+        String msg = 'Error ${response.statusCode}';
+        try {
+          final data = json.decode(response.body);
+          msg = data['error']?.toString() ?? msg;
+        } catch (_) {}
+        setState(() {
+          _loading = false;
+          _loadError = msg;
+        });
+      }
+    } catch (e) {
+      debugPrint('[SERVICES-STATE] Exception: $e');
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _loadError = 'Error de conexión: $e';
+        });
+      }
+    }
+  }
+
+  Future<void> _executeAction(String servicio, String accion) async {
+    if (_busyServices.contains(servicio)) return;
+    setState(() => _busyServices.add(servicio));
+
+    final url = '${widget.apiUrl}/${widget.username}/nodos/${widget.nodo}/servicios/accion';
+    debugPrint('[SVC-ACTION] POST $url accion=$accion servicio=$servicio');
+
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'accion': accion, 'servicio': servicio}),
+      );
+      debugPrint('[SVC-ACTION] Status: ${response.statusCode} Body: ${response.body}');
+
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("'$accion' OK en $servicio"),
+            backgroundColor: AppTheme.successGreen,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } else {
+        String msg = 'Error en acción';
+        try {
+          final data = json.decode(response.body);
+          msg = data['mensaje']?.toString() ?? data['error']?.toString() ?? msg;
+        } catch (_) {}
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error de conexión: $e'),
+            backgroundColor: AppTheme.errorRed,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busyServices.remove(servicio));
+        // Pequeña pausa y refrescar
+        await Future.delayed(const Duration(milliseconds: 600));
+        if (mounted) _fetchStates();
+      }
+    }
+  }
+
+  Future<void> _restartSelected() async {
+    if (_selectedForRestart.isEmpty) return;
+    final lista = _selectedForRestart.toList();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Reiniciando ${lista.length} servicio(s)...'),
+        backgroundColor: AppTheme.primaryBlue,
+      ),
+    );
+
+    final url = '${widget.apiUrl}/${widget.username}/nodos/${widget.nodo}/reiniciar-servicio';
+    debugPrint('[MULTI-RESTART] POST $url servicios=$lista');
+
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'servicios': lista}),
+      );
+      debugPrint('[MULTI-RESTART] Status: ${response.statusCode} Body: ${response.body}');
+
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Servicios reiniciados'),
+            backgroundColor: AppTheme.successGreen,
+          ),
+        );
+        setState(() => _selectedForRestart.clear());
+        await Future.delayed(const Duration(milliseconds: 600));
+        if (mounted) _fetchStates();
+      } else {
+        String msg = 'Error al reiniciar';
+        try {
+          final data = json.decode(response.body);
+          msg = data['mensaje']?.toString() ?? data['error']?.toString() ?? msg;
+        } catch (_) {}
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error de conexión: $e'),
+            backgroundColor: AppTheme.errorRed,
+          ),
+        );
+      }
+    }
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'Running':
+        return AppTheme.successGreen;
+      case 'Stopped':
+        return AppTheme.errorRed;
+      case 'Paused':
+        return AppTheme.warningAmber;
+      case 'NotInstalled':
+        return Colors.grey;
+      default:
+        return AppTheme.warningAmber;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Theme.of(context).cardColor,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 600),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.settings_rounded, color: AppTheme.primaryBlue),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Servicios',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).textTheme.titleLarge?.color,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Refrescar',
+                    icon: const Icon(Icons.refresh_rounded, size: 20),
+                    onPressed: _loading ? null : _fetchStates,
+                  ),
+                  IconButton(
+                    tooltip: 'Cerrar',
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              Text(
+                'Nodo: ${widget.nodo}',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                  color: Theme.of(context).textTheme.bodyMedium?.color,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Expanded(child: _buildBody()),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final btnRestart = ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _selectedForRestart.isEmpty
+                          ? Theme.of(context).disabledColor
+                          : AppTheme.errorRed,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    icon: const Icon(Icons.restart_alt_rounded, size: 16),
+                    label: Text(
+                      _selectedForRestart.isEmpty
+                          ? 'Reiniciar'
+                          : 'Reiniciar (${_selectedForRestart.length})',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onPressed: _selectedForRestart.isEmpty ? null : _restartSelected,
+                  );
+                  final btnCerrar = TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cerrar'),
+                  );
+                  // Si el ancho es muy chico, apilar verticalmente
+                  if (constraints.maxWidth < 360) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        btnRestart,
+                        const SizedBox(height: 6),
+                        btnCerrar,
+                      ],
+                    );
+                  }
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [btnCerrar, const SizedBox(width: 8), btnRestart],
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(color: AppTheme.primaryBlue));
+    }
+    if (_loadError != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline_rounded, size: 36, color: AppTheme.errorRed),
+            const SizedBox(height: 8),
+            Text(_loadError!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+      );
+    }
+    return ListView.separated(
+      shrinkWrap: true,
+      itemCount: _services.length,
+      separatorBuilder: (_, __) => Divider(
+        height: 12,
+        color: Theme.of(context).dividerColor.withOpacity(0.3),
+      ),
+      itemBuilder: (context, index) => _buildServiceRow(_services[index]),
+    );
+  }
+
+  Widget _buildServiceRow(Map<String, dynamic> svc) {
+    final name = svc['name'] as String;
+    final status = svc['status'] as String;
+    final startType = svc['startType'] as String;
+    final bool installed = status != 'NotInstalled';
+    final bool running = status == 'Running';
+    final bool stopped = status == 'Stopped';
+    final bool disabled = startType == 'Disabled';
+    final bool busy = _busyServices.contains(name);
+    final bool selected = _selectedForRestart.contains(name);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        InkWell(
+          onTap: !installed
+              ? null
+              : () {
+                  setState(() {
+                    if (selected) {
+                      _selectedForRestart.remove(name);
+                    } else {
+                      _selectedForRestart.add(name);
+                    }
+                  });
+                },
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Icon(
+              selected
+                  ? Icons.check_box_rounded
+                  : Icons.check_box_outline_blank_rounded,
+              size: 18,
+              color: !installed
+                  ? Colors.grey.withOpacity(0.4)
+                  : (selected ? AppTheme.errorRed : Theme.of(context).textTheme.bodyMedium?.color),
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                name,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).textTheme.bodyLarge?.color,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: _statusColor(status),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    installed ? '$status · $startType' : 'No instalado',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        if (busy)
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        else if (installed) ...[
+          if (stopped)
+            _actionBtn(
+              icon: Icons.play_arrow_rounded,
+              tooltip: 'Iniciar',
+              color: AppTheme.successGreen,
+              onTap: () => _executeAction(name, 'start'),
+            ),
+          if (running)
+            _actionBtn(
+              icon: Icons.stop_rounded,
+              tooltip: 'Detener',
+              color: AppTheme.warningAmber,
+              onTap: () => _executeAction(name, 'stop'),
+            ),
+          if (running || stopped)
+            _actionBtn(
+              icon: Icons.restart_alt_rounded,
+              tooltip: 'Reiniciar',
+              color: AppTheme.primaryBlue,
+              onTap: () => _executeAction(name, 'restart'),
+            ),
+          if (disabled)
+            _actionBtn(
+              icon: Icons.power_settings_new_rounded,
+              tooltip: 'Habilitar (Automatic)',
+              color: AppTheme.warningAmber,
+              onTap: () => _executeAction(name, 'enable_automatic'),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _actionBtn({
+    required IconData icon,
+    required String tooltip,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Tooltip(
+          message: tooltip,
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: color.withOpacity(0.3)),
+            ),
+            child: Icon(icon, size: 14, color: color),
+          ),
+        ),
       ),
     );
   }

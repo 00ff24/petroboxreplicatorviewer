@@ -60,7 +60,7 @@ class AppTheme {
     colorScheme: const ColorScheme.dark(
       primary: primaryBlue,
       onPrimary: Colors.white,
-      secondary: primaryBlue, // Puedes ajustarlo si tienes un secundario
+      secondary: primaryBlue,
       onSecondary: Colors.white,
       error: errorRed,
       onError: Colors.white,
@@ -71,18 +71,29 @@ class AppTheme {
       headlineLarge: TextStyle(
         color: darkTextMain,
         fontWeight: FontWeight.bold,
+        letterSpacing: -0.5,
       ),
       headlineMedium: TextStyle(
         color: darkTextMain,
         fontWeight: FontWeight.bold,
+        letterSpacing: -0.3,
       ),
-      titleLarge: TextStyle(color: darkTextMain),
+      titleLarge: TextStyle(color: darkTextMain, letterSpacing: -0.2),
       bodyLarge: TextStyle(color: darkTextMain),
       bodyMedium: TextStyle(color: darkTextMuted),
       labelLarge: TextStyle(
         color: Colors.white,
         fontWeight: FontWeight.bold,
-      ), // Para botones
+      ),
+    ),
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+      },
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -110,6 +121,14 @@ class AppTheme {
     elevatedButtonTheme: _elevatedButtonTheme,
     outlinedButtonTheme: _outlinedButtonTheme(isDark: true),
     textButtonTheme: _textButtonTheme,
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+    dialogTheme: DialogThemeData(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      backgroundColor: darkBgCard,
+    ),
   );
 
   static final ThemeData lightTheme = ThemeData(
@@ -169,6 +188,23 @@ class AppTheme {
     elevatedButtonTheme: _elevatedButtonTheme,
     outlinedButtonTheme: _outlinedButtonTheme(isDark: false),
     textButtonTheme: _textButtonTheme,
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+      },
+    ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+    dialogTheme: DialogThemeData(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      backgroundColor: lightBgCard,
+    ),
   );
 
   // --- ESTILOS DE BOTONES COMPARTIDOS ---

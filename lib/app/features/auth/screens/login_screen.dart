@@ -25,7 +25,7 @@ class LoginScreen extends StatelessWidget {
         actions: [
           IconButton(
             onPressed: onThemeToggle,
-            icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
+            icon: Icon(isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded),
             color: theme.textTheme.titleLarge?.color,
             tooltip: 'Cambiar tema',
           ),
@@ -35,28 +35,37 @@ class LoginScreen extends StatelessWidget {
       body: LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(
-            // Usamos reverse: true para que al abrir el teclado, el scroll se ajuste desde abajo
             reverse: true,
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: constraints.maxHeight),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // --- ZONA SUPERIOR (Logo y Título) ---
+                  // --- ZONA SUPERIOR (Logo y Titulo) ---
                   Padding(
                     padding: const EdgeInsets.only(top: 60, bottom: 40),
                     child: Column(
                       children: [
                         AppLogo(height: 80, isDarkMode: isDarkMode),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 28),
                         Text(
-                          '¡Hola,\nBienvenido!',
+                          'Bienvenido',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 36,
+                            fontSize: 32,
                             height: 1.2,
-                            fontWeight: FontWeight.w300, // Light font
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.5,
                             color: theme.textTheme.headlineLarge?.color,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Inicia sesion para continuar',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: theme.textTheme.bodyMedium?.color,
                           ),
                         ),
                       ],
@@ -68,22 +77,22 @@ class LoginScreen extends StatelessWidget {
                     width: double.infinity,
                     constraints: const BoxConstraints(
                       maxWidth: 600,
-                    ), // Límite para tablets/PC
+                    ),
                     decoration: BoxDecoration(
                       color: theme.cardColor,
                       borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(40),
-                        topRight: Radius.circular(40),
+                        topLeft: Radius.circular(32),
+                        topRight: Radius.circular(32),
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 20,
-                          offset: const Offset(0, -5),
+                          color: Colors.black.withOpacity(0.15),
+                          blurRadius: 30,
+                          offset: const Offset(0, -8),
                         ),
                       ],
                     ),
-                    padding: const EdgeInsets.fromLTRB(32, 40, 32, 32),
+                    padding: const EdgeInsets.fromLTRB(32, 36, 32, 32),
                     child: SafeArea(
                       top: false,
                       child: LoginForm(

@@ -69,7 +69,8 @@ class _LoginFormState extends State<LoginForm> {
     // Iterar por todos los servidores disponibles hasta que uno responda
     for (final endpoint in ServerManager.apiEndpoints) {
       try {
-        final authServerUrl = endpoint.replaceAll('/usuarios', '');
+        final uri = Uri.parse(endpoint);
+        final authServerUrl = '${uri.scheme}://${uri.host}:${uri.port}';
         final url = Uri.parse('$authServerUrl/auth/request-otp');
 
         final response = await http
@@ -271,28 +272,62 @@ class _LoginFormState extends State<LoginForm> {
 
         const SizedBox(height: 40),
 
-        // --- BOTÓN LOGIN ---
-        ElevatedButton(
-          onPressed: _isLoading ? null : (_codeSent ? _login : _sendCode),
-          style: ElevatedButton.styleFrom(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30),
-            ),
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            elevation: 8,
-            shadowColor: primaryColor.withOpacity(0.4),
-          ),
-          child:
-              _isLoading
-                  ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
+        // --- BOTON LOGIN ---
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: _isLoading
+                ? null
+                : LinearGradient(
+                    colors: [
+                      primaryColor,
+                      primaryColor.withOpacity(0.8),
+                    ],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+            boxShadow: _isLoading
+                ? []
+                : [
+                    BoxShadow(
+                      color: primaryColor.withOpacity(0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
                     ),
-                  )
-                  : Text(_codeSent ? 'Iniciar Sesión' : 'Enviar Código'),
+                  ],
+          ),
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : (_codeSent ? _login : _sendCode),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _isLoading ? null : Colors.transparent,
+              shadowColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              minimumSize: const Size(double.infinity, 0),
+            ),
+            child:
+                _isLoading
+                    ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                        strokeCap: StrokeCap.round,
+                      ),
+                    )
+                    : Text(
+                      _codeSent ? 'Iniciar Sesion' : 'Enviar Codigo',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+          ),
         ),
       ],
     );
