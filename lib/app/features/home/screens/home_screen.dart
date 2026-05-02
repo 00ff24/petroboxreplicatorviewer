@@ -2192,6 +2192,7 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
 
   // Estado solo usado por la vista desktop split (no afecta a mobile)
   String _desktopFilterText = '';
+  String? _desktopActiveNode; // Nodo abierto en el panel derecho de logs
 
   @override
   Widget build(BuildContext context) {
@@ -2894,7 +2895,7 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                 ],
               ),
               const SizedBox(height: 20),
-              // ─── Cuerpo split: panel izquierdo + panel derecho ───
+              // ─── Cuerpo split: panel izquierdo + central + (opcional) logs nodo ───
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2909,6 +2910,20 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                           ? _buildDesktopRightPanel()
                           : _buildDesktopEmptyRight(),
                     ),
+                    if (_desktopActiveNode != null) ...[
+                      const SizedBox(width: 24),
+                      SizedBox(
+                        width: 840,
+                        child: DesktopNodeLogsPanel(
+                          key: ValueKey('node-logs-$_desktopActiveNode'),
+                          apiUrl: usersBaseUrl,
+                          username: selectedUser?['usuario'] ?? '',
+                          nodo: _desktopActiveNode!,
+                          onClose: () =>
+                              setState(() => _desktopActiveNode = null),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -3168,6 +3183,9 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                     serverName: widget.server.name,
                     apiUrl: usersBaseUrl,
                     userData: _detailedUser!,
+                    onNodeTapDesktop: (nodo) =>
+                        setState(() => _desktopActiveNode = nodo),
+                    activeNodeDesktop: _desktopActiveNode,
                   ),
               ],
             ),
@@ -3259,6 +3277,14 @@ class UserDetailContent extends StatefulWidget {
 
   final Map<String, dynamic> userData;
 
+  // Callback opcional usado SOLO en desktop split: cuando el usuario tapea un
+  // nodo en la lista de output, el padre maneja la apertura de un panel
+  // dedicado y este widget NO reemplaza sus logs.
+  final void Function(String nodo)? onNodeTapDesktop;
+
+  // Nodo activo en el panel de logs desktop (para resaltarlo en la lista)
+  final String? activeNodeDesktop;
+
   const UserDetailContent({
     super.key,
 
@@ -3269,6 +3295,9 @@ class UserDetailContent extends StatefulWidget {
     required this.apiUrl,
 
     required this.userData,
+
+    this.onNodeTapDesktop,
+    this.activeNodeDesktop,
   });
 
   @override
@@ -3660,13 +3689,21 @@ class UserDetailContentState extends State<UserDetailContent> {
                               if (displayName.contains('/')) {
                                 displayName = displayName.split('/').last;
                               }
-                              final bool isActive = activeNodeForLogs == displayName;
+                              final bool isActive = (widget.onNodeTapDesktop != null
+                                      ? widget.activeNodeDesktop
+                                      : activeNodeForLogs) == displayName;
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 8.0),
                                 child: Material(
                                   color: Colors.transparent,
                                   child: InkWell(
-                                    onTap: () => fetchNodeLogs(displayName),
+                                    onTap: () {
+                                      if (widget.onNodeTapDesktop != null) {
+                                        widget.onNodeTapDesktop!(displayName);
+                                      } else {
+                                        fetchNodeLogs(displayName);
+                                      }
+                                    },
                                     borderRadius: BorderRadius.circular(8),
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(
@@ -4478,6 +4515,224 @@ class _NodeServicesDialogState extends State<NodeServicesDialog> {
             child: Icon(icon, size: 14, color: color),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// PANEL DE LOGS DEL NODO (Desktop split)
+// ==========================================
+
+class DesktopNodeLogsPanel extends StatefulWidget {
+  final String apiUrl;
+  final String username;
+  final String nodo;
+  final VoidCallback onClose;
+
+  const DesktopNodeLogsPanel({
+    super.key,
+    required this.apiUrl,
+    required this.username,
+    required this.nodo,
+    required this.onClose,
+  });
+
+  @override
+  State<DesktopNodeLogsPanel> createState() => _DesktopNodeLogsPanelState();
+}
+
+class _DesktopNodeLogsPanelState extends State<DesktopNodeLogsPanel> {
+  bool _loading = true;
+  List<String> _logs = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  Future<void> _fetch() async {
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _logs = [];
+    });
+    final url =
+        '${widget.apiUrl}/${widget.username}/nodos/${widget.nodo}/logs';
+    debugPrint('[DESKTOP-NODE-LOGS] GET $url');
+    try {
+      final response = await http.get(Uri.parse(url));
+      debugPrint(
+          '[DESKTOP-NODE-LOGS] Status: ${response.statusCode}');
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is Map && data.containsKey('logs')) {
+          setState(() => _logs = List<String>.from(data['logs']));
+        }
+      } else {
+        setState(() => _logs = ['Error ${response.statusCode}', response.body]);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _logs = ['Error: $e']);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _copyToClipboard() {
+    if (_logs.isEmpty) return;
+    Clipboard.setData(ClipboardData(text: _logs.join('\n')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Logs copiados al portapapeles',
+            textAlign: TextAlign.center),
+        behavior: SnackBarBehavior.floating,
+        width: 260,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(50)),
+        backgroundColor: Theme.of(context).colorScheme.inverseSurface,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1117),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF21262D)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: const BoxDecoration(
+              color: Color(0xFF161B22),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(11),
+                topRight: Radius.circular(11),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF3FB950),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.terminal_rounded,
+                    size: 14, color: Color(0xFF8B949E)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Logs nodo: ${widget.nodo}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF8B949E),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                InkWell(
+                  onTap: _loading ? null : _fetch,
+                  borderRadius: BorderRadius.circular(4),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.refresh_rounded,
+                        size: 14, color: Color(0xFF8B949E)),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                InkWell(
+                  onTap: _copyToClipboard,
+                  borderRadius: BorderRadius.circular(4),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.content_copy_rounded,
+                        size: 13, color: Color(0xFF484F58)),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                InkWell(
+                  onTap: widget.onClose,
+                  borderRadius: BorderRadius.circular(4),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.close_rounded,
+                        size: 14, color: Color(0xFF8B949E)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Body
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFF58A6FF),
+                      ),
+                    )
+                  : _logs.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'No hay logs.',
+                            style: TextStyle(
+                                color: Color(0xFF484F58), fontSize: 13),
+                          ),
+                        )
+                      : Scrollbar(
+                          thumbVisibility: true,
+                          child: ListView.builder(
+                            itemCount: _logs.length,
+                            itemBuilder: (context, index) {
+                              final line = _logs[index];
+                              Color lineColor = const Color(0xFFC9D1D9);
+                              FontWeight fontWeight = FontWeight.normal;
+                              if (line.toLowerCase().contains('error')) {
+                                lineColor = const Color(0xFFF85149);
+                              } else if (line
+                                  .toLowerCase()
+                                  .contains('incoming file')) {
+                                lineColor = const Color(0xFF3FB950);
+                              } else if (line.toLowerCase().contains('warn')) {
+                                lineColor = const Color(0xFFD29922);
+                              } else if (line.startsWith('---')) {
+                                lineColor = const Color(0xFF58A6FF);
+                                fontWeight = FontWeight.bold;
+                              }
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 3.0),
+                                child: Text(
+                                  line,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: lineColor,
+                                    fontWeight: fontWeight,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+            ),
+          ),
+        ],
       ),
     );
   }
