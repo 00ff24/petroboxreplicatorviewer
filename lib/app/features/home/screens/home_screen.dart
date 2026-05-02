@@ -4381,15 +4381,77 @@ class _NodeServicesDialogState extends State<NodeServicesDialog> {
               color: AppTheme.primaryBlue,
               onTap: () => _executeAction(name, 'restart'),
             ),
-          if (disabled)
-            _actionBtn(
-              icon: Icons.power_settings_new_rounded,
-              tooltip: 'Habilitar (Automatic)',
-              color: AppTheme.warningAmber,
-              onTap: () => _executeAction(name, 'enable_automatic'),
-            ),
+          // Menú de tipo de inicio (Automatic / Manual / Disabled)
+          _buildStartTypeMenu(name, startType),
         ],
       ],
+    );
+  }
+
+  Widget _buildStartTypeMenu(String serviceName, String currentStartType) {
+    // Opciones que NO son la actual (no tiene sentido aplicar la misma)
+    final List<PopupMenuEntry<String>> items = [];
+    if (currentStartType != 'Automatic') {
+      items.add(const PopupMenuItem(
+        value: 'enable_automatic',
+        child: Row(
+          children: [
+            Icon(Icons.bolt_rounded, size: 16, color: AppTheme.successGreen),
+            SizedBox(width: 8),
+            Text('Modo Automático'),
+          ],
+        ),
+      ));
+    }
+    if (currentStartType != 'Manual') {
+      items.add(const PopupMenuItem(
+        value: 'enable_manual',
+        child: Row(
+          children: [
+            Icon(Icons.touch_app_rounded, size: 16, color: AppTheme.primaryBlue),
+            SizedBox(width: 8),
+            Text('Modo Manual'),
+          ],
+        ),
+      ));
+    }
+    if (currentStartType != 'Disabled') {
+      items.add(const PopupMenuItem(
+        value: 'disable',
+        child: Row(
+          children: [
+            Icon(Icons.block_rounded, size: 16, color: AppTheme.errorRed),
+            SizedBox(width: 8),
+            Text('Deshabilitar'),
+          ],
+        ),
+      ));
+    }
+
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: PopupMenuButton<String>(
+        tooltip: 'Tipo de inicio',
+        padding: EdgeInsets.zero,
+        position: PopupMenuPosition.under,
+        icon: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: Theme.of(context).dividerColor.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: Theme.of(context).dividerColor),
+          ),
+          child: Icon(
+            Icons.more_vert_rounded,
+            size: 14,
+            color: Theme.of(context).textTheme.bodyMedium?.color,
+          ),
+        ),
+        itemBuilder: (context) => items,
+        onSelected: (action) => _executeAction(serviceName, action),
+      ),
     );
   }
 
