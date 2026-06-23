@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:replicatorviewer/app/config/theme.dart';
+import 'package:replicatorviewer/app/features/genex_services/screens/genex_services_screen.dart';
 
 import 'package:replicatorviewer/main.dart'; // Tu import original
 
@@ -1082,6 +1083,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         : 'Expandir todo',
                 color: Theme.of(context).textTheme.bodyMedium?.color,
               ),
+
+            IconButton(
+              padding: const EdgeInsets.all(6),
+              constraints: const BoxConstraints(),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const GenexServicesScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.dns_rounded),
+              iconSize: 22,
+              tooltip: 'Servicios Genex',
+              color: Theme.of(context).textTheme.bodyMedium?.color,
+            ),
 
             IconButton(
               padding: const EdgeInsets.all(6),
